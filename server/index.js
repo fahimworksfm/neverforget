@@ -31,6 +31,7 @@ import {
 } from '../lib/escalation.js';
 import { startScheduler, tick } from './scheduler.js';
 import { COOKIE, issue, verify, roleForCode, requireRole, cookieOptions, codesConfigured } from './auth.js';
+import { validateSettingsPatch } from '../lib/settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -105,6 +106,11 @@ app.get('/api/session', (req, res) => {
   res.json({ role, codesConfigured });
 });
 
+// The access codes are short and human-typeable, which is right for a phone
+// but leaves them guessable given unlimited attempts. A real user never hits
+// this ceiling.
+const loginThrottle = { fails: 0, until: 0 };
+
 app.post('/api/login', (req, res) => {
   const { code } = req.body || {};
   if (!codesConfigured) {
@@ -113,11 +119,23 @@ app.post('/api/login', (req, res) => {
   if (typeof code !== 'string' || !code) {
     return res.status(400).json({ error: 'code_required' });
   }
+  if (loginThrottle.until > Date.now()) {
+    return res.status(429).json({
+      error: 'locked_out',
+      retryInSeconds: Math.ceil((loginThrottle.until - Date.now()) / 1000),
+    });
+  }
   const role = roleForCode(code);
   if (!role) {
+    loginThrottle.fails += 1;
+    if (loginThrottle.fails >= 8) {
+      loginThrottle.fails = 0;
+      loginThrottle.until = Date.now() + 15 * 60_000;
+    }
     logEvent(null, 'login_failed');
     return res.status(401).json({ error: 'bad_code' });
   }
+  loginThrottle.fails = 0;
   res.cookie(COOKIE, issue(role), cookieOptions());
   logEvent(null, 'login', role);
   res.json({ role });
@@ -215,39 +233,11 @@ app.get('/api/settings', requireRole('owner'), (req, res) => {
   res.json(allSettings());
 });
 
-const EDITABLE = new Set([
-  'timezone',
-  'timesheet_url',
-  'owner_name',
-  'partner_name',
-  'stakes_enabled',
-  'stakes_amount',
-  'stakes_recipient',
-  'siege_interval_minutes',
-  'weekend_interval_minutes',
-  'grace_days',
-]);
-
 app.post('/api/settings', requireRole('owner'), (req, res) => {
-  const updates = req.body || {};
-  const applied = {};
-  for (const [k, v] of Object.entries(updates)) {
-    if (!EDITABLE.has(k)) continue;
-    if (k === 'timezone') {
-      try {
-        new Intl.DateTimeFormat('en-US', { timeZone: String(v) });
-      } catch {
-        return res.status(400).json({ error: 'bad_timezone' });
-      }
-    }
-    if (k.endsWith('_minutes') || k === 'grace_days') {
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < 1) return res.status(400).json({ error: `bad_${k}` });
-    }
-    setSetting(k, v);
-    applied[k] = String(v);
-  }
-  logEvent(null, 'settings_updated', Object.keys(applied).join(','));
+  const { patch, error } = validateSettingsPatch(req.body || {});
+  if (error) return res.status(400).json({ error });
+  for (const [k, v] of Object.entries(patch)) setSetting(k, v);
+  logEvent(null, 'settings_updated', Object.keys(patch).join(','));
   res.json({ ok: true, settings: allSettings() });
 });
 

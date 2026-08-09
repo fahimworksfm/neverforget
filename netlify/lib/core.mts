@@ -166,12 +166,46 @@ async function fire(weekKey: string, stage: any, url: string, now: Date, isFixed
   return delivered;
 }
 
+// Close out any week that fell off the end of its grace window while still
+// pending. Without this the tick only ever looks at the current week, so an
+// abandoned one stays `pending` forever -- and because both streak functions
+// skip pending weeks, the miss is silently forgiven. Swept weeks are recorded
+// but never announced: a push about a three-week-old Friday is noise.
+async function sweepAbandoned(currentKey: string, settings: Record<string, string>, now: Date) {
+  const stale = (await allWeeks()).filter(
+    (w) =>
+      w.status === 'pending' &&
+      w.week_key !== currentKey &&
+      hoursUntilDeadline(w.week_key, settings.timezone, now) <= 0
+  );
+
+  for (const w of stale) {
+    const applied = await updateWeek(
+      w.week_key,
+      (x) => ({
+        ...x,
+        status: 'missed',
+        missed_at: now.toISOString(),
+        on_time: 0,
+        streak_lost: 0,
+        missed_announced_at: now.toISOString(),
+      }),
+      (x) => x.status === 'pending'
+    );
+    if (applied && settings.stakes_enabled === '1') {
+      await recordStake(w.week_key, Number(settings.stakes_amount));
+    }
+  }
+  return stale.length;
+}
+
 // One pass of the scheduler. Returns what it did, for logging.
 export async function runTick(now = new Date()) {
   const settings = await getSettings();
   const cfg = config(settings);
   const weekKey = weekKeyFor(now, cfg.timezone, cfg.graceDays);
   const week = await ensureWeek(weekKey);
+  await sweepAbandoned(weekKey, settings, now);
 
   const hoursLeft = hoursUntilDeadline(weekKey, cfg.timezone, now);
   const minutes = minutesIntoFriday(weekKey, cfg.timezone, now);
@@ -185,7 +219,7 @@ export async function runTick(now = new Date()) {
     case 'missed': {
       // Record the miss the moment it happens; announce it at a civil hour.
       const streakLost = currentStreak(await allWeeks());
-      await updateWeek(
+      const applied = await updateWeek(
         weekKey,
         (w) => ({
           ...w,
@@ -196,7 +230,10 @@ export async function runTick(now = new Date()) {
         }),
         (w) => w.status !== 'confirmed'
       );
-      if (settings.stakes_enabled === '1') {
+      // Only bill for the miss if the miss actually stuck. The guard returns
+      // null when she confirmed inside the race window, and charging her for
+      // a week she submitted is the worst mistake this app could make.
+      if (applied && settings.stakes_enabled === '1') {
         await recordStake(weekKey, Number(settings.stakes_amount));
       }
       break;

@@ -21,13 +21,15 @@ import {
   getWeek,
   getFlag,
   setFlag,
+  getRecord,
+  putRecord,
   clearHistory,
-  DEFAULT_SETTINGS,
 } from '../lib/store.mjs';
 import { publicKey, pushConfigured, sendTo } from '../lib/push.mjs';
 import { buildState, confirmWeek, unconfirmWeek, runTick } from '../lib/core.mjs';
 import { weekKeyFor } from '../../lib/week.js';
 import { STAGES, SIEGE_STAGE, OVERDUE_STAGE, MISSED_STAGE } from '../../lib/escalation.js';
+import { validateSettingsPatch } from '../../lib/settings.js';
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
@@ -41,14 +43,6 @@ function sessionRole(req: Request): string | null {
   return verifyToken(parseCookies(req.headers.get('cookie'))[COOKIE], secret);
 }
 
-const EDITABLE = new Set(Object.keys(DEFAULT_SETTINGS));
-const NUMERIC = new Set([
-  'grace_days',
-  'siege_interval_minutes',
-  'weekend_interval_minutes',
-  'quiet_start_hour',
-  'quiet_end_hour',
-]);
 
 export default async (req: Request) => {
   const { pathname } = new URL(req.url);
@@ -86,12 +80,37 @@ export default async (req: Request) => {
     const secret = env('SESSION_SECRET');
     if (!secret || !env('OWNER_CODE')) return json({ error: 'codes_not_configured' }, 500);
 
+    // The access codes are short and human-typeable, which is the right call
+    // for a phone but leaves them guessable if an attacker can try forever.
+    // Lock out after a handful of misses; a real user never hits this.
+    const throttle = (await getRecord<{ fails: number; until: number }>('login_throttle')) ?? {
+      fails: 0,
+      until: 0,
+    };
+    if (throttle.until > Date.now()) {
+      return json(
+        { error: 'locked_out', retryInSeconds: Math.ceil((throttle.until - Date.now()) / 1000) },
+        429
+      );
+    }
+
     const role = roleForCode((body as any).code, {
       ownerCode: env('OWNER_CODE'),
       partnerCode: env('PARTNER_CODE'),
     });
-    if (!role) return json({ error: 'bad_code' }, 401);
 
+    if (!role) {
+      const fails = throttle.fails + 1;
+      const locked = fails >= 8;
+      await putRecord('login_throttle', {
+        fails: locked ? 0 : fails,
+        until: locked ? Date.now() + 15 * 60_000 : 0,
+      });
+      console.warn(`[auth] failed login (${fails}/8)${locked ? ' -- locked for 15 min' : ''}`);
+      return json({ error: 'bad_code' }, 401);
+    }
+
+    if (throttle.fails) await putRecord('login_throttle', { fails: 0, until: 0 });
     return json({ role }, 200, { 'Set-Cookie': cookieString(issueToken(role, secret)) });
   }
 
@@ -103,6 +122,16 @@ export default async (req: Request) => {
   const role = sessionRole(req);
   if (!role) return json({ error: 'not_authenticated' }, 401);
   const ownerOnly = () => role === 'owner';
+
+  // Every state-changing route must be POST. The session cookie is
+  // SameSite=Lax, which still rides along on top-level GET navigations, so
+  // without this a bare link to /api/confirm would silently close her week.
+  // The Express target gets this free from app.post(); this is the parity fix.
+  const MUTATING =
+    /^(confirm|unconfirm|subscribe|unsubscribe|nudge|test-push|tick|preview|reset|stakes\/[\d-]+\/settle)$/;
+  if (MUTATING.test(route) && req.method !== 'POST') {
+    return json({ error: 'method_not_allowed' }, 405);
+  }
 
   switch (route) {
     case 'state':
@@ -147,23 +176,9 @@ export default async (req: Request) => {
       if (!ownerOnly()) return json({ error: 'forbidden' }, 403);
       if (req.method !== 'POST') return json(await getSettings());
 
-      const patch: Record<string, string> = {};
-      for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
-        if (!EDITABLE.has(k)) continue;
-        if (k === 'timezone') {
-          try {
-            new Intl.DateTimeFormat('en-US', { timeZone: String(v) });
-          } catch {
-            return json({ error: 'bad_timezone' }, 400);
-          }
-        }
-        if (NUMERIC.has(k)) {
-          const n = Number(v);
-          if (!Number.isFinite(n) || n < 0) return json({ error: `bad_${k}` }, 400);
-        }
-        patch[k] = String(v);
-      }
-      return json({ ok: true, settings: await saveSettings(patch) });
+      const { patch, error } = validateSettingsPatch(body as Record<string, unknown>);
+      if (error) return json({ error }, 400);
+      return json({ ok: true, settings: await saveSettings(patch!) });
     }
 
     case 'nudge': {

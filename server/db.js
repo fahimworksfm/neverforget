@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { DEFAULT_SETTINGS } from '../lib/settings.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -73,24 +74,10 @@ addColumn('weeks', 'missed_announced_at', 'TEXT');
 // has already been reset and the number would be gone.
 addColumn('weeks', 'streak_lost', 'INTEGER');
 
+// Shared with the Netlify target; only the timezone may be seeded from env.
 const DEFAULTS = {
-  timezone: process.env.TZ_HOUSEHOLD || 'America/New_York',
-  timesheet_url: '',
-  owner_name: 'Maria',
-  partner_name: 'Fahim',
-  stakes_enabled: '0',
-  stakes_amount: '20',
-  stakes_recipient: 'a cause you actively dislike',
-  // Grace window (days after Friday) during which an overdue week stays current.
-  grace_days: '4',
-  siege_interval_minutes: '15',
-  weekend_interval_minutes: '45',
-  // Post-deadline nudges are held inside this window. Nagging at 3am does not
-  // produce a submitted timesheet, it produces an uninstalled app. The Friday
-  // ladder itself ignores quiet hours -- the deadline is midnight, so the late
-  // rungs are the entire point.
-  quiet_end_hour: '8',
-  quiet_start_hour: '22',
+  ...DEFAULT_SETTINGS,
+  ...(process.env.TZ_HOUSEHOLD ? { timezone: process.env.TZ_HOUSEHOLD } : {}),
 };
 
 const getSetting = db.prepare('SELECT value FROM settings WHERE key = ?');

@@ -85,11 +85,39 @@ async function fire(weekKey, stage, now, cfg, { isFixedRung = false } = {}) {
   logEvent(weekKey, 'nudge', `${stage.id} -> ${delivered} device(s)`);
 }
 
+// Close out any week that fell off the end of its grace window while still
+// pending. The tick only ever looks at the current week, so without this an
+// abandoned one stays `pending` forever -- and because the streak functions
+// skip pending weeks, the miss is silently forgiven. Swept weeks are recorded
+// but never announced: a push about a three-week-old Friday is noise.
+function sweepAbandoned(currentKey, cfg, now) {
+  const stale = db
+    .prepare("SELECT week_key FROM weeks WHERE status = 'pending' AND week_key != ?")
+    .all(currentKey)
+    .filter((w) => hoursUntilDeadline(w.week_key, cfg.timezone, now) <= 0);
+
+  for (const { week_key: key } of stale) {
+    db.prepare(
+      `UPDATE weeks SET status = 'missed', missed_at = ?, on_time = 0,
+       streak_lost = 0, missed_announced_at = ? WHERE week_key = ? AND status = 'pending'`
+    ).run(now.toISOString(), now.toISOString(), key);
+    logEvent(key, 'missed_swept');
+    if (settingBool('stakes_enabled')) {
+      db.prepare(
+        `INSERT INTO stakes (week_key, amount, status, created_at) VALUES (?, ?, 'owed', ?)
+         ON CONFLICT(week_key) DO NOTHING`
+      ).run(key, Number(setting('stakes_amount')), now.toISOString());
+    }
+  }
+  return stale.length;
+}
+
 // One pass of the loop. Exported so tests and the simulator can drive it.
 export async function tick(now = new Date()) {
   const cfg = config();
   const weekKey = weekKeyFor(now, cfg.timezone, cfg.graceDays);
   ensureWeek(weekKey);
+  sweepAbandoned(weekKey, cfg, now);
   const week = getWeek(weekKey);
 
   const hoursLeft = hoursUntilDeadline(weekKey, cfg.timezone, now);

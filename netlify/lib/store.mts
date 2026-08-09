@@ -7,6 +7,7 @@
 // the whole app, so every read is strongly consistent.
 
 import { getStore, getDeployStore } from '@netlify/blobs';
+import { DEFAULT_SETTINGS as SHARED_DEFAULTS } from '../../lib/settings.js';
 
 export type Role = 'owner' | 'partner';
 
@@ -40,20 +41,8 @@ export interface PushSub {
   created_at: string;
 }
 
-export const DEFAULT_SETTINGS: Record<string, string> = {
-  timezone: 'America/New_York',
-  timesheet_url: '',
-  owner_name: 'Maria',
-  partner_name: 'Partner',
-  stakes_enabled: '0',
-  stakes_amount: '20',
-  stakes_recipient: 'a cause you actively dislike',
-  grace_days: '4',
-  siege_interval_minutes: '15',
-  weekend_interval_minutes: '45',
-  quiet_end_hour: '8',
-  quiet_start_hour: '22',
-};
+// Shared with the self-hosted target; see lib/settings.js.
+export const DEFAULT_SETTINGS: Record<string, string> = SHARED_DEFAULTS;
 
 // Read from BOTH sources rather than choosing one.
 //
@@ -250,6 +239,16 @@ export async function putSubs(role: Role, subs: PushSub[]): Promise<void> {
 }
 
 export async function addSub(role: Role, sub: PushSub): Promise<number> {
+  // Drop this endpoint from the OTHER role first. A device that has been
+  // logged in as both would otherwise stay registered as the owner forever
+  // and keep receiving the full siege ladder. The SQLite target gets this
+  // free from the UNIQUE constraint on endpoint; here it has to be explicit.
+  const other: Role = role === 'owner' ? 'partner' : 'owner';
+  const otherSubs = await getSubs(other);
+  if (otherSubs.some((s) => s.endpoint === sub.endpoint)) {
+    await putSubs(other, otherSubs.filter((s) => s.endpoint !== sub.endpoint));
+  }
+
   const subs = await getSubs(role);
   const next = subs.filter((s) => s.endpoint !== sub.endpoint);
   next.push(sub);
@@ -280,6 +279,14 @@ export async function clearHistory(): Promise<number> {
   await Promise.all(keys.map((k) => s.delete(k)));
   await s.delete('flags/manual_nudge').catch(() => {});
   return keys.length;
+}
+
+export async function getRecord<T>(key: string): Promise<T | null> {
+  return (await store().get(`flags/${key}`, { type: 'json' })) as T | null;
+}
+
+export async function putRecord(key: string, value: unknown): Promise<void> {
+  await store().setJSON(`flags/${key}`, value);
 }
 
 export async function getFlag(key: string): Promise<number> {

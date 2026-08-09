@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 
 let state = null;
 let ticker = null;
+let poller = null;
 
 // ---------------------------------------------------------------- helpers
 
@@ -51,7 +52,7 @@ const isStandalone =
 function showLogin() {
   $('login').classList.remove('hide');
   $('app').classList.add('hide');
-  if (ticker) clearInterval(ticker);
+  stopLive();
 }
 
 function showApp() {
@@ -150,19 +151,33 @@ function render() {
 
 // Re-render the countdown locally each second so the number moves without
 // hammering the server; real state refreshes on a slower cadence.
-function startTicker() {
-  if (ticker) clearInterval(ticker);
+//
+// Both timers are installed here, by every path that reaches a logged-in
+// state. Installing the poll only in the boot path meant logging in via the
+// form left the page frozen on its first response.
+function startLive() {
+  stopLive();
   ticker = setInterval(() => {
     if (!state) return;
     state.week.hoursLeft = (new Date(state.week.deadline).getTime() - Date.now()) / 3_600_000;
     render();
   }, 1000);
+  poller = setInterval(() => refresh().catch(() => {}), 60_000);
+}
+
+function stopLive() {
+  if (ticker) clearInterval(ticker);
+  if (poller) clearInterval(poller);
+  ticker = null;
+  poller = null;
 }
 
 async function refresh() {
   state = await api('/api/state');
   render();
-  fillSettings();
+  // Only repopulate settings when they are not being edited -- the 60s poll
+  // used to overwrite half-typed input once a minute.
+  if (!settingsDirty) fillSettings();
   updateNotifState();
 }
 
@@ -175,6 +190,17 @@ const ZONES = [
   'Asia/Kolkata', 'Asia/Dhaka', 'Asia/Singapore', 'Asia/Tokyo',
   'Australia/Sydney', 'UTC',
 ];
+
+const SETTING_FIELDS = ['tz', 'url', 'stakesOn', 'amount', 'recipient'];
+let settingsDirty = false;
+
+// One delegated listener. `change` matters as well as `input` because some
+// browsers only fire `change` for <select>.
+for (const evt of ['input', 'change']) {
+  document.addEventListener(evt, (e) => {
+    if (e.target && SETTING_FIELDS.includes(e.target.id)) settingsDirty = true;
+  });
+}
 
 function fillSettings() {
   const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -261,7 +287,7 @@ $('loginBtn').onclick = async () => {
     }
     showApp();
     await refresh();
-    startTicker();
+    startLive();
   } catch (e) {
     err.textContent = loginErrorMessage(e);
     err.classList.remove('hide');
@@ -284,6 +310,13 @@ $('confirmBtn').onclick = async () => {
   try {
     state = await api('/api/confirm', { method: 'POST', body: '{}' });
     render();
+  } catch (e) {
+    // A confirm she believes landed but did not is the single worst failure
+    // this app can have: the reminders stop in her head, not on the server.
+    alert(
+      `Could not record it (${e.code || e.status || 'no connection'}).\n\n` +
+        'The week is still open. Try again once you are back online.'
+    );
   } finally {
     $('confirmBtn').disabled = false;
   }
@@ -331,6 +364,7 @@ $('resetBtn').onclick = async () => {
 };
 
 $('saveBtn').onclick = async () => {
+  settingsDirty = false;
   await api('/api/settings', {
     method: 'POST',
     body: JSON.stringify({
@@ -365,8 +399,7 @@ $('logout').onclick = async (e) => {
     if (!role) return showLogin();
     showApp();
     await refresh();
-    startTicker();
-    setInterval(() => refresh().catch(() => {}), 60_000);
+    startLive();
   } catch {
     showLogin();
   }

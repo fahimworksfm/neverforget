@@ -41,10 +41,23 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// Focus an existing window if there is one, but navigate it to the target
+// first. Focusing alone would land her back on the app instead of the
+// timesheet -- which is the one journey the notification exists to shorten.
 async function focusApp(url) {
   const all = await clients.matchAll({ type: 'window', includeUncontrolled: true });
   for (const c of all) {
-    if (c.url.includes(self.location.origin) && 'focus' in c) return c.focus();
+    if (!c.url.startsWith(self.location.origin)) continue;
+    if ('navigate' in c && url) {
+      try {
+        const navigated = await c.navigate(url);
+        return (navigated || c).focus();
+      } catch {
+        // Cross-origin targets reject navigate(); fall back to a new window.
+        return clients.openWindow(url);
+      }
+    }
+    if ('focus' in c) return c.focus();
   }
   return clients.openWindow(url);
 }

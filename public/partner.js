@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let state = null;
+let poller = null;
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -30,6 +31,16 @@ const isStandalone =
 function showLogin() {
   $('login').classList.remove('hide');
   $('app').classList.add('hide');
+  if (poller) clearInterval(poller);
+  poller = null;
+}
+
+// Installed by every path that reaches a logged-in state. Installing it only
+// in the boot path meant logging in via the form left the view frozen on its
+// first response.
+function startLive() {
+  if (poller) clearInterval(poller);
+  poller = setInterval(() => refresh().catch(() => {}), 60_000);
 }
 
 // Fraction of Friday still available, 0..1. Drives the arc.
@@ -171,6 +182,7 @@ $('loginBtn').onclick = async () => {
     $('login').classList.add('hide');
     $('app').classList.remove('hide');
     await refresh();
+    startLive();
   } catch (e) {
     err.textContent =
       e.error === 'codes_not_configured'
@@ -234,7 +246,7 @@ $('logout').onclick = async (e) => {
     $('login').classList.add('hide');
     $('app').classList.remove('hide');
     await refresh();
-    setInterval(() => refresh().catch(() => {}), 60_000);
+    startLive();
   } catch {
     showLogin();
   }
