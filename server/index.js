@@ -17,10 +17,18 @@ import db, {
   logEvent,
   stakesLedger,
   outstandingStakes,
+  clearHistory,
 } from './db.js';
 import { publicKey, saveSubscription, removeSubscription, subscriptionCount, sendTo, pushConfigured } from './push.js';
 import { weekKeyFor, hoursUntilDeadline, minutesIntoFriday, deadlineFor, formatWeekLabel } from '../lib/week.js';
-import { pressureLevel, STAGES, SIEGE_BEGINS_AT } from '../lib/escalation.js';
+import {
+  pressureLevel,
+  STAGES,
+  SIEGE_BEGINS_AT,
+  SIEGE_STAGE,
+  OVERDUE_STAGE,
+  MISSED_STAGE,
+} from '../lib/escalation.js';
 import { startScheduler, tick } from './scheduler.js';
 import { COOKIE, issue, verify, roleForCode, requireRole, cookieOptions, codesConfigured } from './auth.js';
 
@@ -305,6 +313,33 @@ app.post('/api/test-push', requireRole('owner', 'partner'), async (req, res) => 
 app.post('/api/tick', requireRole('owner'), async (req, res) => {
   const result = await tick();
   res.json(result);
+});
+
+// Fire any rung on demand without touching week state. The only honest way to
+// judge whether Friday is too gentle or too brutal is to feel the real thing.
+app.post('/api/preview', requireRole('owner'), async (req, res) => {
+  const id = String(req.body?.stage || 'evening');
+  const stage = [...STAGES, SIEGE_STAGE, OVERDUE_STAGE, MISSED_STAGE].find((s) => s.id === id);
+  if (!stage) return res.status(400).json({ error: 'unknown_stage', id });
+
+  const delivered = await sendTo('owner', {
+    tag: 'preview',
+    renotify: true,
+    title: `[preview] ${stage.title}`,
+    body: stage.body,
+    urgency: stage.urgency,
+    requireInteraction: stage.requireInteraction,
+    stage: stage.id,
+    url: setting('timesheet_url') || '/',
+  });
+  res.json({ ok: true, delivered, stage: id });
+});
+
+app.post('/api/reset', requireRole('owner'), (req, res) => {
+  if (req.body?.confirm !== 'RESET') return res.status(400).json({ error: 'confirm_required' });
+  const removed = clearHistory();
+  logEvent(null, 'history_cleared', String(removed));
+  res.json({ ok: true, removed, ...buildState() });
 });
 
 app.get('/api/events', requireRole('owner', 'partner'), (req, res) => {

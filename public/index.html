@@ -18,7 +18,11 @@
 <div id="login" class="login hide">
   <h1>Never Forget</h1>
   <p>Enter your access code.</p>
-  <input id="code" type="password" inputmode="text" autocomplete="current-password" placeholder="Access code">
+  <!-- autocomplete is off deliberately: a password manager silently filling a
+       saved credential here looks identical to a wrong code being typed. -->
+  <input id="code" type="password" inputmode="text" autocomplete="off"
+         autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Access code">
+  <button id="reveal" class="btn secondary" style="margin-top:8px;padding:9px;font-size:13px">Show</button>
   <div id="loginError" class="banner hide" style="margin-top:14px"></div>
   <button id="loginBtn" class="btn" style="margin-top:14px">Enter</button>
 </div>
@@ -73,6 +77,38 @@
     <div class="row"><span class="k">This device</span><span class="v" id="notifState">—</span></div>
     <button id="enableBtn" class="btn secondary" style="margin-top:12px">Enable on this device</button>
     <button id="testBtn" class="btn secondary">Send a test notification</button>
+  </div>
+
+  <div class="card">
+    <h2>Try it out</h2>
+    <div class="muted" style="margin-bottom:12px">
+      Fires a real notification for any point in Friday's ladder, without
+      changing this week's status. Use it to decide whether the tone is right
+      before it matters.
+    </div>
+    <label for="previewStage">Which moment</label>
+    <select id="previewStage">
+      <option value="morning">Friday 10:00 — gentle</option>
+      <option value="midday">Friday 14:00 — firmer</option>
+      <option value="afternoon">Friday 16:00 — eight hours left</option>
+      <option value="evening" selected>Friday 17:00 — getting annoying</option>
+      <option value="night">Friday 22:00 — two hours</option>
+      <option value="lastcall">Friday 23:30 — thirty minutes</option>
+      <option value="siege">Siege — the repeating one</option>
+      <option value="missed">Midnight — missed it</option>
+      <option value="overdue">Weekend — overdue</option>
+    </select>
+    <button id="previewBtn" class="btn secondary" style="margin-top:12px">Send this notification</button>
+    <div id="previewMsg" class="banner info hide"></div>
+
+    <div style="border-top:1px solid var(--line);margin:16px 0 0;padding-top:16px">
+      <div class="muted" style="margin-bottom:10px">
+        Clears all week history and stakes, keeping settings and devices.
+        Run this once before handing the app over, so no streak is built out
+        of test runs.
+      </div>
+      <button id="resetBtn" class="btn secondary">Reset history</button>
+    </div>
   </div>
 
   <div class="card">

@@ -236,6 +236,21 @@ export async function dropSub(role: Role, endpoint: string): Promise<void> {
 
 // --------------------------------------------------------------------- misc
 
+// Wipes week history and the stakes ledger, keeping settings and registered
+// devices. Used to hand over a clean slate after a testing session -- nobody
+// should inherit a streak built out of dry runs.
+export async function clearHistory(): Promise<number> {
+  const s = store();
+  const [weeks, stakes] = await Promise.all([
+    s.list({ prefix: 'weeks/' }),
+    s.list({ prefix: 'stakes/' }),
+  ]);
+  const keys = [...weeks.blobs, ...stakes.blobs].map((b) => b.key);
+  await Promise.all(keys.map((k) => s.delete(k)));
+  await s.delete('flags/manual_nudge').catch(() => {});
+  return keys.length;
+}
+
 export async function getFlag(key: string): Promise<number> {
   const v = (await store().get(`flags/${key}`, { type: 'json' })) as { at: number } | null;
   return v?.at ?? 0;

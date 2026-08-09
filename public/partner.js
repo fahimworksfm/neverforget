@@ -7,12 +7,13 @@ async function api(path, options = {}) {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
-  if (res.status === 401) {
-    showLogin();
-    throw new Error('unauthenticated');
-  }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(body.error || res.statusText), body);
+  if (!res.ok) {
+    // Only bounce to login for an expired session, never for a failed login
+    // attempt -- otherwise the form resets before the error can be read.
+    if (res.status === 401 && !path.endsWith('/login')) showLogin();
+    throw Object.assign(new Error(body.error || res.statusText), body, { status: res.status });
+  }
   return body;
 }
 
@@ -150,8 +151,13 @@ $('loginBtn').onclick = async () => {
     $('login').classList.add('hide');
     $('app').classList.remove('hide');
     await refresh();
-  } catch {
-    err.textContent = 'That code did not work.';
+  } catch (e) {
+    err.textContent =
+      e.error === 'codes_not_configured'
+        ? 'The server cannot see its access codes. Check the Netlify environment variables.'
+        : e.status === 401
+          ? 'That code did not work.'
+          : `Login failed (HTTP ${e.status || '?'}).`;
     err.classList.remove('hide');
   }
 };

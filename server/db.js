@@ -185,6 +185,16 @@ export function bestStreak() {
   return best;
 }
 
+// Wipes week history and the stakes ledger, keeping settings and devices.
+// Used to hand over a clean slate after a testing session.
+export function clearHistory() {
+  const n =
+    db.prepare('SELECT COUNT(*) AS n FROM weeks').get().n +
+    db.prepare('SELECT COUNT(*) AS n FROM stakes').get().n;
+  db.exec('DELETE FROM weeks; DELETE FROM stakes; DELETE FROM events;');
+  return n;
+}
+
 export function stakesLedger() {
   return db.prepare('SELECT * FROM stakes ORDER BY week_key DESC').all();
 }

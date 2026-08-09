@@ -11,12 +11,29 @@ async function api(path, options = {}) {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
-  if (res.status === 401) {
-    showLogin();
-    throw new Error('unauthenticated');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // Carry the status and server error code so callers can tell a rejected
+    // password from a server that is misconfigured. Collapsing both into one
+    // message makes a broken deployment indistinguishable from a typo.
+    const err = new Error(body.error || res.statusText);
+    err.status = res.status;
+    err.code = body.error;
+    // Only bounce to the login screen for an expired session, never for a
+    // failed login attempt -- that would wipe the form mid-diagnosis.
+    if (res.status === 401 && !path.endsWith('/login')) showLogin();
+    throw err;
   }
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
-  return res.json();
+  return body;
+}
+
+function loginErrorMessage(err) {
+  if (err.code === 'codes_not_configured') {
+    return 'The server cannot see its access codes. Check the Netlify environment variables.';
+  }
+  if (err.status === 401) return 'That code did not work.';
+  if (err.status) return `Login failed (HTTP ${err.status}).`;
+  return 'Could not reach the server.';
 }
 
 function urlBase64ToUint8Array(base64) {
@@ -228,10 +245,17 @@ $('loginBtn').onclick = async () => {
     showApp();
     await refresh();
     startTicker();
-  } catch {
-    err.textContent = 'That code did not work.';
+  } catch (e) {
+    err.textContent = loginErrorMessage(e);
     err.classList.remove('hide');
   }
+};
+
+$('reveal').onclick = () => {
+  const f = $('code');
+  const hidden = f.type === 'password';
+  f.type = hidden ? 'text' : 'password';
+  $('reveal').textContent = hidden ? 'Hide' : 'Show';
 };
 
 $('code').addEventListener('keydown', (e) => {
@@ -260,6 +284,33 @@ $('testBtn').onclick = async () => {
   const { delivered, configured } = await api('/api/test-push', { method: 'POST', body: '{}' });
   if (!configured) alert('Server has no VAPID keys — nothing was sent. Run `npm run keys`.');
   else if (!delivered) alert('No devices registered yet. Tap "Enable on this device" first.');
+};
+
+$('previewBtn').onclick = async () => {
+  const msg = $('previewMsg');
+  msg.classList.remove('hide');
+  try {
+    const { delivered } = await api('/api/preview', {
+      method: 'POST',
+      body: JSON.stringify({ stage: $('previewStage').value }),
+    });
+    msg.textContent = delivered
+      ? `Sent to ${delivered} device${delivered === 1 ? '' : 's'}.`
+      : 'No devices registered yet — enable notifications above first.';
+  } catch (e) {
+    msg.textContent = `Could not send (${e.code || e.status || 'network error'}).`;
+  }
+  setTimeout(() => msg.classList.add('hide'), 5000);
+};
+
+$('resetBtn').onclick = async () => {
+  if (!confirm('Delete all week history and stakes? Settings and devices are kept.')) return;
+  const { removed } = await api('/api/reset', {
+    method: 'POST',
+    body: JSON.stringify({ confirm: 'RESET' }),
+  });
+  alert(`Cleared ${removed} record${removed === 1 ? '' : 's'}.`);
+  await refresh();
 };
 
 $('saveBtn').onclick = async () => {

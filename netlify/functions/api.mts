@@ -19,11 +19,13 @@ import {
   getWeek,
   getFlag,
   setFlag,
+  clearHistory,
   DEFAULT_SETTINGS,
 } from '../lib/store.mjs';
 import { publicKey, pushConfigured, sendTo } from '../lib/push.mjs';
 import { buildState, confirmWeek, unconfirmWeek, runTick } from '../lib/core.mjs';
 import { weekKeyFor } from '../../lib/week.js';
+import { STAGES, SIEGE_STAGE, OVERDUE_STAGE, MISSED_STAGE } from '../../lib/escalation.js';
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
@@ -53,7 +55,20 @@ export default async (req: Request) => {
 
   // ------------------------------------------------------------ public
   if (route === 'session') {
-    return json({ role: sessionRole(req), codesConfigured: Boolean(env('OWNER_CODE')) });
+    // Booleans only, never values. Without this there is no way to tell a
+    // mistyped code from a server that cannot see its own configuration --
+    // both surface to the user as a failed login.
+    return json({
+      role: sessionRole(req),
+      codesConfigured: Boolean(env('OWNER_CODE')),
+      config: {
+        ownerCode: Boolean(env('OWNER_CODE')),
+        partnerCode: Boolean(env('PARTNER_CODE')),
+        sessionSecret: Boolean(env('SESSION_SECRET')),
+        vapidPublic: Boolean(env('VAPID_PUBLIC_KEY')),
+        vapidPrivate: Boolean(env('VAPID_PRIVATE_KEY')),
+      },
+    });
   }
 
   if (route === 'login' && req.method === 'POST') {
@@ -186,6 +201,37 @@ export default async (req: Request) => {
     case 'tick': {
       if (!ownerOnly()) return json({ error: 'forbidden' }, 403);
       return json(await runTick());
+    }
+
+    // Fire any rung of the ladder on demand, without touching week state.
+    // The only honest way to judge whether Friday is too gentle or too brutal
+    // is to feel the actual notification on an actual phone.
+    case 'preview': {
+      if (!ownerOnly()) return json({ error: 'forbidden' }, 403);
+      const id = String((body as any).stage || 'evening');
+      const stage =
+        [...STAGES, SIEGE_STAGE, OVERDUE_STAGE, MISSED_STAGE].find((s: any) => s.id === id);
+      if (!stage) return json({ error: 'unknown_stage', id }, 400);
+
+      const settings = await getSettings();
+      const delivered = await sendTo('owner', {
+        tag: 'preview',
+        renotify: true,
+        title: `[preview] ${(stage as any).title}`,
+        body: (stage as any).body,
+        urgency: (stage as any).urgency,
+        requireInteraction: (stage as any).requireInteraction,
+        stage: (stage as any).id,
+        url: settings.timesheet_url || '/',
+      });
+      return json({ ok: true, delivered, stage: id });
+    }
+
+    case 'reset': {
+      if (!ownerOnly()) return json({ error: 'forbidden' }, 403);
+      if ((body as any).confirm !== 'RESET') return json({ error: 'confirm_required' }, 400);
+      const removed = await clearHistory();
+      return json({ ok: true, removed, ...(await buildState(role)) });
     }
 
     default: {
