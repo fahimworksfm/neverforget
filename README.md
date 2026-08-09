@@ -99,6 +99,13 @@ Or connect the repo in the Netlify UI (*Project configuration → Build & deploy
 Link repository*) so every push deploys automatically. Either way the settings
 in `netlify.toml` are picked up.
 
+**Environment variables must be created with scope `all`.** Scoped variables
+(e.g. restricting one to `functions`) are a paid-plan feature; on the free tier
+they are accepted by the API and then never exposed to the running function, so
+every value reads as missing and the only visible symptom is a login that
+rejects a correct code. `GET /api/session` reports which values resolve and
+from where — check it first, before assuming a typo.
+
 On this target:
 
 - State lives in **Netlify Blobs** instead of SQLite, with strong consistency
