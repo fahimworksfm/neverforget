@@ -1,7 +1,7 @@
 import db, { setting, settingInt, settingBool, ensureWeek, getWeek, logEvent, currentStreak } from './db.js';
 import { sendTo } from './push.js';
-import { weekKeyFor, hoursUntilDeadline, minutesIntoFriday, formatWeekLabel, localParts } from './week.js';
-import { decide } from './escalation.js';
+import { weekKeyFor, hoursUntilDeadline, minutesIntoFriday, formatWeekLabel, localParts } from '../lib/week.js';
+import { decide } from '../lib/escalation.js';
 
 function config() {
   return {

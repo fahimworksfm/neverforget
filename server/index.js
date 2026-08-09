@@ -19,8 +19,8 @@ import db, {
   outstandingStakes,
 } from './db.js';
 import { publicKey, saveSubscription, removeSubscription, subscriptionCount, sendTo, pushConfigured } from './push.js';
-import { weekKeyFor, hoursUntilDeadline, minutesIntoFriday, deadlineFor, formatWeekLabel } from './week.js';
-import { pressureLevel, STAGES, SIEGE_BEGINS_AT } from './escalation.js';
+import { weekKeyFor, hoursUntilDeadline, minutesIntoFriday, deadlineFor, formatWeekLabel } from '../lib/week.js';
+import { pressureLevel, STAGES, SIEGE_BEGINS_AT } from '../lib/escalation.js';
 import { startScheduler, tick } from './scheduler.js';
 import { COOKIE, issue, verify, roleForCode, requireRole, cookieOptions, codesConfigured } from './auth.js';
 

@@ -19,7 +19,7 @@ delete process.env.VAPID_PRIVATE_KEY;
 
 const { setting, setSetting, getWeek, currentStreak } = await import('./db.js');
 const { tick } = await import('./scheduler.js');
-const { zonedToUtc, weekKeyFor, localParts } = await import('./week.js');
+const { zonedToUtc, weekKeyFor, localParts } = await import('../lib/week.js');
 const db = (await import('./db.js')).default;
 
 const TZ = setting('timezone');

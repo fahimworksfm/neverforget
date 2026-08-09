@@ -1,0 +1,26 @@
+[build]
+  publish = "public"
+  command = "echo 'static assets only; functions are bundled by Netlify'"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# The service worker must be able to control the whole origin, and must never
+# be served stale -- a cached sw.js would keep an old push handler alive.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Service-Worker-Allowed = "/"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
+# Partner view is a real page, not a redirect target.
+[[redirects]]
+  from = "/partner"
+  to = "/partner.html"
+  status = 200
