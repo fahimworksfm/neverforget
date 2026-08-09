@@ -147,10 +147,15 @@ export function getWeek(weekKey) {
   return db.prepare('SELECT * FROM weeks WHERE week_key = ?').get(weekKey);
 }
 
+// The most recent `limit` weeks, returned oldest-first so callers can render
+// them straight onto a left-to-right timeline. The Netlify target returns the
+// same order; a client reading both must not have to care which it is talking
+// to.
 export function recentWeeks(limit = 12) {
   return db
     .prepare('SELECT * FROM weeks ORDER BY week_key DESC LIMIT ?')
-    .all(limit);
+    .all(limit)
+    .reverse();
 }
 
 // Consecutive on-time weeks, counting back from the most recent resolved week.

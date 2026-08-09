@@ -32,6 +32,22 @@ function showLogin() {
   $('app').classList.add('hide');
 }
 
+// Fraction of Friday still available, 0..1. Drives the arc.
+function remainingFraction(week) {
+  if (week.status === 'confirmed') return 1;
+  if (week.hoursLeft <= 0) return 0;
+  if (week.minutesIntoFriday < 0) return 1;
+  return Math.max(0, Math.min(1, 1 - week.minutesIntoFriday / 1440));
+}
+
+function drawDial(fraction) {
+  const el = $('dialFill');
+  const r = Number(el.getAttribute('r'));
+  const c = 2 * Math.PI * r;
+  el.style.strokeDasharray = String(c);
+  el.style.strokeDashoffset = String(c * (1 - fraction));
+}
+
 function render() {
   const { week, pressure, streak, best, stakes, names } = state;
   document.body.dataset.pressure = String(pressure.level);
@@ -39,18 +55,19 @@ function render() {
 
   const owner = names.owner;
   if (week.status === 'confirmed') {
-    $('status').textContent = 'Submitted ✅';
+    $('status').textContent = 'Submitted';
     $('heroSub').textContent = week.onTime
       ? `${owner} submitted ${week.label} on time.`
       : `${owner} submitted ${week.label}, late.`;
   } else if (week.hoursLeft <= 0) {
-    $('status').textContent = 'Missed ✕';
+    $('status').textContent = 'Missed';
     $('heroSub').textContent = `${week.label} closed unsubmitted.`;
   } else {
     const h = Math.floor(week.hoursLeft);
-    $('status').textContent = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h left` : `${h}h left`;
+    $('status').textContent = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h left`;
     $('heroSub').textContent = `${owner} has not submitted ${week.label} yet.`;
   }
+  drawDial(remainingFraction(week));
 
   $('nudgeBtn').classList.toggle('hide', week.status === 'confirmed');
   $('streak').textContent = streak;
@@ -58,15 +75,16 @@ function render() {
   $('nudges').textContent = week.nudgeCount;
 
   $('weeks').innerHTML = state.history
-    .slice()
-    .reverse()
     .map((w) => {
-      const cls =
-        w.status === 'confirmed' ? (w.onTime ? 'ontime' : 'late') : w.status === 'missed' ? 'missed' : '';
-      const mark = w.status === 'confirmed' ? (w.onTime ? '✓' : '~') : w.status === 'missed' ? '✕' : '·';
-      return `<div class="chip ${cls}">${w.label.split(', ')[1] || w.label}<br>${mark}</div>`;
+      const s = w.status === 'confirmed' ? (w.onTime ? 'ontime' : 'late') : w.status;
+      return `<div class="hbar" data-s="${s}" title="${w.label} — ${s}"></div>`;
     })
     .join('');
+  const short = (l) => (l || '').replace(/^\w+,\s*/, '');
+  $('histFrom').textContent = state.history.length ? short(state.history[0].label) : '';
+  $('histTo').textContent = state.history.length
+    ? short(state.history[state.history.length - 1].label)
+    : '';
 
   const owed = stakes.ledger.filter((s) => s.status === 'owed');
   $('stakesCard').classList.toggle('hide', !stakes.enabled);
@@ -74,11 +92,12 @@ function render() {
     ? owed
         .map(
           (s) =>
-            `<div class="row"><span class="k">${s.week}</span>` +
-            `<span class="v">$${s.amount} <button class="btn secondary" style="display:inline-block;width:auto;padding:5px 12px;margin:0 0 0 8px;font-size:12px" data-settle="${s.week}">Settle</button></span></div>`
+            `<div class="row"><span class="row-k">${s.week}</span>` +
+            `<span class="row-v">$${s.amount} <button class="btn btn-ghost btn-sm" style="margin-left:8px" data-settle="${s.week}">Settle</button></span></div>`
         )
-        .join('') + `<div class="row"><span class="k">Total</span><span class="v">$${stakes.outstanding}</span></div>`
-    : '<div class="muted">Nothing outstanding.</div>';
+        .join('') +
+      `<div class="row"><span class="row-k">Total</span><span class="row-v">$${stakes.outstanding}</span></div>`
+    : '<div class="hint">Nothing outstanding.</div>';
 
   for (const btn of document.querySelectorAll('[data-settle]')) {
     btn.onclick = async () => {
@@ -105,8 +124,9 @@ async function updateNotifState() {
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = reg ? await reg.pushManager.getSubscription() : null;
   const on = Notification.permission === 'granted' && Boolean(sub);
-  el.textContent = on ? 'On ✅' : Notification.permission === 'denied' ? 'Blocked' : 'Off';
+  el.textContent = on ? 'On' : Notification.permission === 'denied' ? 'Blocked' : 'Off';
   $('enableBtn').classList.toggle('hide', on);
+  if (!on) $('notifPanel').open = true;
 }
 
 async function enablePush() {
@@ -181,6 +201,13 @@ $('nudgeBtn').onclick = async () => {
           : 'Could not send.';
   }
   setTimeout(() => msg.classList.add('hide'), 4000);
+};
+
+$('reveal').onclick = () => {
+  const f = $('code');
+  const hidden = f.type === 'password';
+  f.type = hidden ? 'text' : 'password';
+  $('reveal').textContent = hidden ? 'Hide' : 'Show';
 };
 
 $('enableBtn').onclick = enablePush;

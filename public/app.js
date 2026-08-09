@@ -13,14 +13,14 @@ async function api(path, options = {}) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    // Carry the status and server error code so callers can tell a rejected
-    // password from a server that is misconfigured. Collapsing both into one
-    // message makes a broken deployment indistinguishable from a typo.
+    // Carry status and server error code so callers can tell a rejected
+    // password from a misconfigured server. Collapsing both into one message
+    // makes a broken deployment indistinguishable from a typo.
     const err = new Error(body.error || res.statusText);
     err.status = res.status;
     err.code = body.error;
-    // Only bounce to the login screen for an expired session, never for a
-    // failed login attempt -- that would wipe the form mid-diagnosis.
+    // Only bounce to login for an expired session, never for a failed login
+    // attempt -- that would wipe the form mid-diagnosis.
     if (res.status === 401 && !path.endsWith('/login')) showLogin();
     throw err;
   }
@@ -64,11 +64,37 @@ function formatCountdown(hours) {
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  if (h >= 24) {
-    const d = Math.floor(h / 24);
-    return `${d}d ${h % 24}h`;
-  }
+  if (h >= 24) return `${Math.floor(h / 24)}d ${h % 24}h`;
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// Fraction of Friday still available, 0..1. Drives the arc.
+function remainingFraction(week) {
+  if (week.status === 'confirmed') return 1;
+  if (week.hoursLeft <= 0) return 0;
+  if (week.minutesIntoFriday < 0) return 1;
+  return Math.max(0, Math.min(1, 1 - week.minutesIntoFriday / 1440));
+}
+
+function drawDial(fraction) {
+  const el = $('dialFill');
+  const r = Number(el.getAttribute('r'));
+  const c = 2 * Math.PI * r;
+  el.style.strokeDasharray = String(c);
+  el.style.strokeDashoffset = String(c * (1 - fraction));
+}
+
+function renderHistory(history) {
+  const host = $('weeks');
+  host.innerHTML = history
+    .map((w) => {
+      const s = w.status === 'confirmed' ? (w.onTime ? 'ontime' : 'late') : w.status;
+      return `<div class="hbar" data-s="${s}" title="${w.label} — ${s}"></div>`;
+    })
+    .join('');
+  const short = (l) => (l || '').replace(/^\w+,\s*/, '');
+  $('histFrom').textContent = history.length ? short(history[0].label) : '';
+  $('histTo').textContent = history.length ? short(history[history.length - 1].label) : '';
 }
 
 function render() {
@@ -80,20 +106,21 @@ function render() {
 
   const confirmed = week.status === 'confirmed';
   const overdue = week.hoursLeft <= 0;
+  const value = $('countdown');
 
   if (confirmed) {
     $('heroLabel').textContent = 'This week';
-    $('countdown').textContent = 'Done ✅';
-    $('countdown').classList.add('small');
+    value.textContent = 'Done';
+    value.classList.add('is-word');
     $('heroSub').textContent = week.onTime
       ? `${week.label} submitted on time. Nothing until next Friday.`
       : `${week.label} submitted late — but submitted.`;
     $('confirmBtn').classList.add('hide');
     $('undoBtn').classList.remove('hide');
   } else {
-    $('countdown').classList.toggle('small', overdue);
+    value.classList.toggle('is-word', false);
     $('heroLabel').textContent = overdue ? 'Overdue by' : 'Time left to submit';
-    $('countdown').textContent = formatCountdown(week.hoursLeft);
+    value.textContent = formatCountdown(week.hoursLeft);
     $('heroSub').textContent = overdue
       ? `${week.label} closed unsubmitted. Still has to be done.`
       : `Due before Saturday · ${week.label}`;
@@ -101,28 +128,17 @@ function render() {
     $('undoBtn').classList.add('hide');
   }
 
+  drawDial(remainingFraction(week));
+
   const link = $('openSheet');
-  if (timesheetUrl) {
-    link.href = timesheetUrl;
-    link.classList.remove('hide');
-  } else {
-    link.classList.add('hide');
-  }
+  link.classList.toggle('hide', !timesheetUrl);
+  if (timesheetUrl) link.href = timesheetUrl;
 
   $('streak').textContent = streak;
   $('best').textContent = best;
   $('nudges').textContent = week.nudgeCount;
 
-  $('weeks').innerHTML = state.history
-    .slice()
-    .reverse()
-    .map((w) => {
-      const cls =
-        w.status === 'confirmed' ? (w.onTime ? 'ontime' : 'late') : w.status === 'missed' ? 'missed' : '';
-      const mark = w.status === 'confirmed' ? (w.onTime ? '✓' : '~') : w.status === 'missed' ? '✕' : '·';
-      return `<div class="chip ${cls}" title="${w.label} — ${w.status}">${w.label.split(', ')[1] || w.label}<br>${mark}</div>`;
-    })
-    .join('');
+  renderHistory(state.history);
 
   $('stakesCard').classList.toggle('hide', !stakes.enabled);
   $('stakeAmount').textContent = `$${stakes.amount}`;
@@ -132,14 +148,13 @@ function render() {
   $('iosBanner').classList.toggle('hide', !(isIOS && !isStandalone));
 }
 
-// Re-render the countdown locally each second, so the number moves without
-// hammering the server; real state is refreshed on a slower cadence.
+// Re-render the countdown locally each second so the number moves without
+// hammering the server; real state refreshes on a slower cadence.
 function startTicker() {
   if (ticker) clearInterval(ticker);
   ticker = setInterval(() => {
     if (!state) return;
-    const deadline = new Date(state.week.deadline).getTime();
-    state.week.hoursLeft = (deadline - Date.now()) / 3_600_000;
+    state.week.hoursLeft = (new Date(state.week.deadline).getTime() - Date.now()) / 3_600_000;
     render();
   }, 1000);
 }
@@ -184,9 +199,11 @@ async function updateNotifState() {
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = reg ? await reg.pushManager.getSubscription() : null;
   const on = Notification.permission === 'granted' && Boolean(sub);
-  el.textContent = on ? 'On ✅' : Notification.permission === 'denied' ? 'Blocked' : 'Off';
+  el.textContent = on ? 'On' : Notification.permission === 'denied' ? 'Blocked' : 'Off';
   $('notifBanner').classList.toggle('hide', on);
   $('enableBtn').classList.toggle('hide', on);
+  // Surface the panel automatically while it still needs attention.
+  if (!on) $('notifPanel').open = true;
 }
 
 async function enablePush() {
@@ -198,9 +215,7 @@ async function enablePush() {
     alert('On iPhone: tap Share → Add to Home Screen, then open the app from there and try again.');
     return;
   }
-
-  const permission = await Notification.requestPermission();
-  if (permission !== 'granted') {
+  if ((await Notification.requestPermission()) !== 'granted') {
     alert('Notifications were not granted. The app cannot remind you without them.');
     return;
   }
@@ -210,7 +225,7 @@ async function enablePush() {
 
   const { key } = await api('/api/vapid');
   if (!key) {
-    alert('Server is missing its VAPID keys. Run `npm run keys` and restart.');
+    alert('Server is missing its VAPID keys.');
     return;
   }
 
@@ -227,17 +242,19 @@ async function enablePush() {
     body: JSON.stringify({ subscription: sub.toJSON(), label: navigator.userAgent.slice(0, 80) }),
   });
   await updateNotifState();
-  alert('Notifications are on. Try the test button to see what Friday looks like.');
+  alert('Notifications are on. Try the preview to see what Friday looks like.');
 }
 
 // ---------------------------------------------------------------- wiring
 
 $('loginBtn').onclick = async () => {
-  const code = $('code').value.trim();
   const err = $('loginError');
   err.classList.add('hide');
   try {
-    const { role } = await api('/api/login', { method: 'POST', body: JSON.stringify({ code }) });
+    const { role } = await api('/api/login', {
+      method: 'POST',
+      body: JSON.stringify({ code: $('code').value.trim() }),
+    });
     if (role === 'partner') {
       window.location.href = '/partner';
       return;
@@ -282,8 +299,8 @@ $('enableBtn').onclick = enablePush;
 
 $('testBtn').onclick = async () => {
   const { delivered, configured } = await api('/api/test-push', { method: 'POST', body: '{}' });
-  if (!configured) alert('Server has no VAPID keys — nothing was sent. Run `npm run keys`.');
-  else if (!delivered) alert('No devices registered yet. Tap "Enable on this device" first.');
+  if (!configured) alert('Server has no VAPID keys.');
+  else if (!delivered) alert('No devices registered yet — enable notifications first.');
 };
 
 $('previewBtn').onclick = async () => {
@@ -296,7 +313,7 @@ $('previewBtn').onclick = async () => {
     });
     msg.textContent = delivered
       ? `Sent to ${delivered} device${delivered === 1 ? '' : 's'}.`
-      : 'No devices registered yet — enable notifications above first.';
+      : 'No devices registered yet — enable notifications first.';
   } catch (e) {
     msg.textContent = `Could not send (${e.code || e.status || 'network error'}).`;
   }
@@ -338,9 +355,7 @@ $('logout').onclick = async (e) => {
 // ---------------------------------------------------------------- boot
 
 (async () => {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   try {
     const { role } = await api('/api/session');
     if (role === 'partner') {

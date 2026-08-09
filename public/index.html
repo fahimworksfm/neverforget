@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0d10">
+<meta name="theme-color" content="#08090c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Never Forget">
@@ -14,123 +14,166 @@
 </head>
 <body data-pressure="1">
 
-<!-- login -->
+<!-- ------------------------------------------------------------- login -->
 <div id="login" class="login hide">
+  <div class="login-mark">!</div>
   <h1>Never Forget</h1>
   <p>Enter your access code.</p>
-  <!-- autocomplete is off deliberately: a password manager silently filling a
-       saved credential here looks identical to a wrong code being typed. -->
-  <input id="code" type="password" inputmode="text" autocomplete="off"
-         autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Access code">
-  <button id="reveal" class="btn secondary" style="margin-top:8px;padding:9px;font-size:13px">Show</button>
-  <div id="loginError" class="banner hide" style="margin-top:14px"></div>
-  <button id="loginBtn" class="btn" style="margin-top:14px">Enter</button>
+  <div class="login-row">
+    <!-- autocomplete off deliberately: a password manager filling a saved
+         credential here is indistinguishable from a wrong code being typed. -->
+    <input id="code" type="password" inputmode="text" autocomplete="off"
+           autocapitalize="none" autocorrect="off" spellcheck="false"
+           placeholder="Access code">
+    <button id="reveal" class="btn btn-ghost" type="button">Show</button>
+  </div>
+  <div id="loginError" class="notice notice-bad hide" style="margin-top:12px"></div>
+  <button id="loginBtn" class="btn btn-primary" style="margin-top:12px">Enter</button>
 </div>
 
-<!-- app -->
-<div id="app" class="wrap hide">
-  <header>
-    <div class="brand">Never Forget</div>
-    <div id="pressurePill" class="pill">—</div>
+<!-- --------------------------------------------------------------- app -->
+<div id="app" class="shell hide">
+
+  <header class="topbar">
+    <div class="mark">Never Forget</div>
+    <div id="pressurePill" class="status">—</div>
   </header>
 
-  <div id="notifBanner" class="banner info hide">
+  <div id="notifBanner" class="notice notice-info hide">
     Notifications are off. Without them this app cannot do its job —
     <b>turn them on below.</b>
   </div>
 
-  <div id="iosBanner" class="banner info hide">
-    On iPhone, push only works once this is added to the Home Screen.
+  <div id="iosBanner" class="notice notice-info hide">
+    On iPhone, push only works once this is on the Home Screen.
     Tap <b>Share → Add to Home Screen</b>, then open it from there.
   </div>
 
-  <div class="hero">
-    <div class="label" id="heroLabel">Time left to submit</div>
-    <div class="countdown" id="countdown">—</div>
-    <div class="sub" id="heroSub">—</div>
-  </div>
-
-  <button id="confirmBtn" class="btn">I submitted my timesheet</button>
-  <a id="openSheet" class="btn secondary hide" style="text-align:center;text-decoration:none" href="#">Open the timesheet</a>
-  <button id="undoBtn" class="btn secondary hide">Undo — I have not actually submitted it</button>
-
-  <div class="grid">
-    <div class="stat"><div class="n" id="streak">0</div><div class="k">Streak</div></div>
-    <div class="stat"><div class="n" id="best">0</div><div class="k">Best</div></div>
-    <div class="stat"><div class="n" id="nudges">0</div><div class="k">Nudges</div></div>
-  </div>
-
-  <div class="card">
-    <h2>Last 12 weeks</h2>
-    <div class="weeks" id="weeks"></div>
-  </div>
-
-  <div class="card" id="stakesCard">
-    <h2>Stakes</h2>
-    <div class="row"><span class="k">Per missed week</span><span class="v" id="stakeAmount">—</span></div>
-    <div class="row"><span class="k">Outstanding</span><span class="v" id="stakeOwed">—</span></div>
-    <div class="row"><span class="k">Goes to</span><span class="v" id="stakeTo">—</span></div>
-  </div>
-
-  <div class="card">
-    <h2>Notifications</h2>
-    <div class="row"><span class="k">This device</span><span class="v" id="notifState">—</span></div>
-    <button id="enableBtn" class="btn secondary" style="margin-top:12px">Enable on this device</button>
-    <button id="testBtn" class="btn secondary">Send a test notification</button>
-  </div>
-
-  <div class="card">
-    <h2>Try it out</h2>
-    <div class="muted" style="margin-bottom:12px">
-      Fires a real notification for any point in Friday's ladder, without
-      changing this week's status. Use it to decide whether the tone is right
-      before it matters.
-    </div>
-    <label for="previewStage">Which moment</label>
-    <select id="previewStage">
-      <option value="morning">Friday 10:00 — gentle</option>
-      <option value="midday">Friday 14:00 — firmer</option>
-      <option value="afternoon">Friday 16:00 — eight hours left</option>
-      <option value="evening" selected>Friday 17:00 — getting annoying</option>
-      <option value="night">Friday 22:00 — two hours</option>
-      <option value="lastcall">Friday 23:30 — thirty minutes</option>
-      <option value="siege">Siege — the repeating one</option>
-      <option value="missed">Midnight — missed it</option>
-      <option value="overdue">Weekend — overdue</option>
-    </select>
-    <button id="previewBtn" class="btn secondary" style="margin-top:12px">Send this notification</button>
-    <div id="previewMsg" class="banner info hide"></div>
-
-    <div style="border-top:1px solid var(--line);margin:16px 0 0;padding-top:16px">
-      <div class="muted" style="margin-bottom:10px">
-        Clears all week history and stakes, keeping settings and devices.
-        Run this once before handing the app over, so no streak is built out
-        of test runs.
+  <section class="focus">
+    <div class="dial">
+      <svg viewBox="0 0 200 200" aria-hidden="true">
+        <circle class="dial-track" cx="100" cy="100" r="92"></circle>
+        <circle id="dialFill" class="dial-fill" cx="100" cy="100" r="92"></circle>
+      </svg>
+      <div class="dial-inner">
+        <div class="dial-label" id="heroLabel">Time left</div>
+        <div class="dial-value" id="countdown">—</div>
+        <div class="dial-note" id="heroSub">—</div>
       </div>
-      <button id="resetBtn" class="btn secondary">Reset history</button>
     </div>
+  </section>
+
+  <div class="actions">
+    <button id="confirmBtn" class="btn btn-primary">I submitted my timesheet</button>
+    <a id="openSheet" class="btn btn-ghost hide" href="#" target="_blank" rel="noopener">Open the timesheet</a>
+    <button id="undoBtn" class="btn btn-quiet hide">Undo — I have not actually submitted it</button>
   </div>
 
-  <div class="card">
-    <h2>Settings</h2>
-    <label for="tz">Timezone</label>
-    <select id="tz"></select>
-    <label for="url">Timesheet URL <span class="muted">(one tap from the notification)</span></label>
-    <input id="url" type="url" inputmode="url" placeholder="https://...">
-    <label for="stakesOn">Stakes</label>
-    <select id="stakesOn">
-      <option value="0">Off</option>
-      <option value="1">On</option>
-    </select>
-    <label for="amount">Amount per missed week</label>
-    <input id="amount" type="number" min="0" step="1">
-    <label for="recipient">Paid to</label>
-    <input id="recipient" type="text">
-    <button id="saveBtn" class="btn secondary" style="margin-top:16px">Save settings</button>
-    <div id="saved" class="banner ok hide" style="margin-top:12px">Saved.</div>
+  <div class="metrics">
+    <div class="metric"><span class="metric-n" id="streak">0</span><span class="metric-k">Streak</span></div>
+    <div class="metric"><span class="metric-n" id="best">0</span><span class="metric-k">Best</span></div>
+    <div class="metric"><span class="metric-n" id="nudges">0</span><span class="metric-k">Nudges</span></div>
   </div>
 
-  <footer><a href="#" id="logout">Sign out</a></footer>
+  <section class="panel">
+    <h2 class="panel-title">Last 12 weeks</h2>
+    <div class="history" id="weeks"></div>
+    <div class="history-axis"><span id="histFrom">—</span><span id="histTo">—</span></div>
+    <div class="legend">
+      <span><i style="background:#34d399"></i>On time</span>
+      <span><i style="background:#fbbf24"></i>Late</span>
+      <span><i style="background:#f87171"></i>Missed</span>
+    </div>
+  </section>
+
+  <section class="panel hide" id="stakesCard">
+    <h2 class="panel-title">Stakes</h2>
+    <div class="row"><span class="row-k">Per missed week</span><span class="row-v" id="stakeAmount">—</span></div>
+    <div class="row"><span class="row-k">Outstanding</span><span class="row-v" id="stakeOwed">—</span></div>
+    <div class="row"><span class="row-k">Goes to</span><span class="row-v" id="stakeTo">—</span></div>
+  </section>
+
+  <details class="panel" id="notifPanel">
+    <summary>Notifications</summary>
+    <div class="panel-body">
+      <div class="row"><span class="row-k">This device</span><span class="row-v" id="notifState">—</span></div>
+      <div class="actions" style="margin:15px 0 0">
+        <button id="enableBtn" class="btn btn-ghost">Enable on this device</button>
+        <button id="testBtn" class="btn btn-quiet">Send a test notification</button>
+      </div>
+    </div>
+  </details>
+
+  <details class="panel">
+    <summary>Try it out</summary>
+    <div class="panel-body">
+      <p class="hint" style="margin:0 0 14px">
+        Fires a real notification for any point in Friday's ladder, without
+        changing this week's status. Best judged on the phone that will
+        actually receive them.
+      </p>
+      <div class="field">
+        <label for="previewStage">Which moment</label>
+        <select id="previewStage">
+          <option value="morning">Friday 10:00 — gentle</option>
+          <option value="midday">Friday 14:00 — firmer</option>
+          <option value="afternoon">Friday 16:00 — eight hours left</option>
+          <option value="evening" selected>Friday 17:00 — getting annoying</option>
+          <option value="night">Friday 22:00 — two hours</option>
+          <option value="lastcall">Friday 23:30 — thirty minutes</option>
+          <option value="siege">Siege — the repeating one</option>
+          <option value="missed">Midnight — missed it</option>
+          <option value="overdue">Weekend — overdue</option>
+        </select>
+      </div>
+      <button id="previewBtn" class="btn btn-ghost" style="margin-top:13px">Send this notification</button>
+      <div id="previewMsg" class="notice notice-info hide" style="margin:11px 0 0"></div>
+
+      <div class="divider"></div>
+      <p class="hint" style="margin:0 0 12px">
+        Clears all week history and stakes, keeping settings and devices. Run
+        this once before handing the app over, so no streak is built out of
+        test runs.
+      </p>
+      <button id="resetBtn" class="btn btn-quiet">Reset history</button>
+    </div>
+  </details>
+
+  <details class="panel">
+    <summary>Settings</summary>
+    <div class="panel-body">
+      <div class="field">
+        <label for="tz">Timezone</label>
+        <select id="tz"></select>
+        <div class="hint">The Friday deadline is midnight in this zone.</div>
+      </div>
+      <div class="field">
+        <label for="url">Timesheet link</label>
+        <input id="url" type="url" inputmode="url" placeholder="https://…">
+        <div class="hint">Optional. Opens straight from the notification. Leave
+          blank if the timesheet will not load on a phone.</div>
+      </div>
+      <div class="field">
+        <label for="stakesOn">Stakes</label>
+        <select id="stakesOn">
+          <option value="0">Off</option>
+          <option value="1">On</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="amount">Amount per missed week</label>
+        <input id="amount" type="number" min="0" step="1">
+      </div>
+      <div class="field">
+        <label for="recipient">Paid to</label>
+        <input id="recipient" type="text">
+      </div>
+      <button id="saveBtn" class="btn btn-ghost" style="margin-top:17px">Save settings</button>
+      <div id="saved" class="notice notice-ok hide" style="margin:11px 0 0">Saved.</div>
+    </div>
+  </details>
+
+  <div class="foot"><a href="#" id="logout">Sign out</a></div>
 </div>
 
 <script src="/app.js"></script>

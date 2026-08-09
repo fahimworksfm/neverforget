@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0d10">
+<meta name="theme-color" content="#08090c">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Never Forget">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
@@ -14,60 +15,87 @@
 <body data-pressure="1">
 
 <div id="login" class="login hide">
+  <div class="login-mark">!</div>
   <h1>Never Forget</h1>
   <p>Enter your access code.</p>
-  <input id="code" type="password" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Access code">
-  <div id="loginError" class="banner hide" style="margin-top:14px"></div>
-  <button id="loginBtn" class="btn" style="margin-top:14px">Enter</button>
+  <div class="login-row">
+    <input id="code" type="password" inputmode="text" autocomplete="off"
+           autocapitalize="none" autocorrect="off" spellcheck="false"
+           placeholder="Access code">
+    <button id="reveal" class="btn btn-ghost" type="button">Show</button>
+  </div>
+  <div id="loginError" class="notice notice-bad hide" style="margin-top:12px"></div>
+  <button id="loginBtn" class="btn btn-primary" style="margin-top:12px">Enter</button>
 </div>
 
-<div id="app" class="wrap hide">
-  <header>
-    <div class="brand">Partner view</div>
-    <div id="pressurePill" class="pill">—</div>
+<div id="app" class="shell hide">
+
+  <header class="topbar">
+    <div class="mark">Partner view</div>
+    <div id="pressurePill" class="status">—</div>
   </header>
 
-  <div id="iosBanner" class="banner info hide">
-    On iPhone, push only works once this is added to the Home Screen.
+  <div id="iosBanner" class="notice notice-info hide">
+    On iPhone, push only works once this is on the Home Screen.
     Tap <b>Share → Add to Home Screen</b>.
   </div>
 
-  <div class="hero">
-    <div class="label" id="heroLabel">This week</div>
-    <div class="countdown small" id="status">—</div>
-    <div class="sub" id="heroSub">—</div>
-  </div>
-
-  <button id="nudgeBtn" class="btn">Send a nudge</button>
-  <div id="nudgeMsg" class="banner info hide"></div>
-
-  <div class="grid">
-    <div class="stat"><div class="n" id="streak">0</div><div class="k">Streak</div></div>
-    <div class="stat"><div class="n" id="best">0</div><div class="k">Best</div></div>
-    <div class="stat"><div class="n" id="nudges">0</div><div class="k">Nudges</div></div>
-  </div>
-
-  <div class="card">
-    <h2>Last 12 weeks</h2>
-    <div class="weeks" id="weeks"></div>
-  </div>
-
-  <div class="card" id="stakesCard">
-    <h2>Stakes owed</h2>
-    <div id="ledger"></div>
-  </div>
-
-  <div class="card">
-    <h2>Notifications</h2>
-    <div class="muted" style="margin-bottom:12px">
-      You get told when a Friday closes unsubmitted, and when she confirms.
+  <section class="focus">
+    <div class="dial">
+      <svg viewBox="0 0 200 200" aria-hidden="true">
+        <circle class="dial-track" cx="100" cy="100" r="92"></circle>
+        <circle id="dialFill" class="dial-fill" cx="100" cy="100" r="92"></circle>
+      </svg>
+      <div class="dial-inner">
+        <div class="dial-label" id="heroLabel">This week</div>
+        <div class="dial-value is-word" id="status">—</div>
+        <div class="dial-note" id="heroSub">—</div>
+      </div>
     </div>
-    <div class="row"><span class="k">This device</span><span class="v" id="notifState">—</span></div>
-    <button id="enableBtn" class="btn secondary" style="margin-top:12px">Enable on this device</button>
-    <button id="testBtn" class="btn secondary">Send a test notification</button>
+  </section>
+
+  <div class="actions">
+    <button id="nudgeBtn" class="btn btn-primary">Send a nudge</button>
+  </div>
+  <div id="nudgeMsg" class="notice notice-info hide"></div>
+
+  <div class="metrics">
+    <div class="metric"><span class="metric-n" id="streak">0</span><span class="metric-k">Streak</span></div>
+    <div class="metric"><span class="metric-n" id="best">0</span><span class="metric-k">Best</span></div>
+    <div class="metric"><span class="metric-n" id="nudges">0</span><span class="metric-k">Nudges</span></div>
   </div>
 
-  <footer><a href="#" id="logout">Sign out</a></footer>
+  <section class="panel">
+    <h2 class="panel-title">Last 12 weeks</h2>
+    <div class="history" id="weeks"></div>
+    <div class="history-axis"><span id="histFrom">—</span><span id="histTo">—</span></div>
+    <div class="legend">
+      <span><i style="background:#34d399"></i>On time</span>
+      <span><i style="background:#fbbf24"></i>Late</span>
+      <span><i style="background:#f87171"></i>Missed</span>
+    </div>
+  </section>
+
+  <section class="panel hide" id="stakesCard">
+    <h2 class="panel-title">Stakes owed</h2>
+    <div id="ledger"></div>
+  </section>
+
+  <details class="panel" id="notifPanel">
+    <summary>Notifications</summary>
+    <div class="panel-body">
+      <p class="hint" style="margin:0 0 14px">
+        You are told when a Friday closes unsubmitted, and when she confirms.
+      </p>
+      <div class="row"><span class="row-k">This device</span><span class="row-v" id="notifState">—</span></div>
+      <div class="actions" style="margin:15px 0 0">
+        <button id="enableBtn" class="btn btn-ghost">Enable on this device</button>
+        <button id="testBtn" class="btn btn-quiet">Send a test notification</button>
+      </div>
+    </div>
+  </details>
+
+  <div class="foot"><a href="#" id="logout">Sign out</a></div>
 </div>
 
 <script src="/partner.js"></script>
