@@ -1,0 +1,23 @@
+{
+  "name": "neverforget",
+  "version": "1.0.0",
+  "description": "An escalating timesheet reminder that does not stop until you confirm.",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "keys": "node server/genkeys.js",
+    "simulate": "node server/simulate.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "web-push": "^3.6.7"
+  }
+}
