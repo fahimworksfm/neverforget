@@ -25,6 +25,8 @@ import {
   bestStreak,
   getStakes,
   recordStake,
+  getFlag,
+  setFlag,
   getSubs,
   type Week,
 } from './store.mjs';
@@ -169,9 +171,18 @@ async function fire(weekKey: string, stage: any, url: string, now: Date, isFixed
 // Close out any week that fell off the end of its grace window while still
 // pending. Without this the tick only ever looks at the current week, so an
 // abandoned one stays `pending` forever -- and because both streak functions
-// skip pending weeks, the miss is silently forgiven. Swept weeks are recorded
-// but never announced: a push about a three-week-old Friday is noise.
+// skip pending weeks, the miss is silently forgiven.
+//
+// Swept weeks are recorded but never announced: a push about a three-week-old
+// Friday is noise. Rate-limited to once an hour because allWeeks() is one
+// strongly-consistent blob read per week ever recorded, and the condition it
+// looks for changes at most once a week -- running it every two minutes would
+// undo the whole reason the tick cadence is two minutes.
 async function sweepAbandoned(currentKey: string, settings: Record<string, string>, now: Date) {
+  const last = await getFlag('last_sweep');
+  if (now.getTime() - last < 3_600_000) return 0;
+  await setFlag('last_sweep', now.getTime());
+
   const stale = (await allWeeks()).filter(
     (w) =>
       w.status === 'pending' &&
@@ -180,7 +191,10 @@ async function sweepAbandoned(currentKey: string, settings: Record<string, strin
   );
 
   for (const w of stale) {
-    const applied = await updateWeek(
+    // Deliberately no stake. A swept week is one the app never actually
+    // nudged her about -- downtime, a fresh deploy, leftover dry runs -- and
+    // billing for silence would make money appear out of nowhere.
+    await updateWeek(
       w.week_key,
       (x) => ({
         ...x,
@@ -190,11 +204,9 @@ async function sweepAbandoned(currentKey: string, settings: Record<string, strin
         streak_lost: 0,
         missed_announced_at: now.toISOString(),
       }),
-      (x) => x.status === 'pending'
+      (x) => x.status === 'pending',
+      { createIfMissing: false }
     );
-    if (applied && settings.stakes_enabled === '1') {
-      await recordStake(w.week_key, Number(settings.stakes_amount));
-    }
   }
   return stale.length;
 }

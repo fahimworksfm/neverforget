@@ -41,25 +41,36 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// Focus an existing window if there is one, but navigate it to the target
-// first. Focusing alone would land her back on the app instead of the
-// timesheet -- which is the one journey the notification exists to shorten.
-async function focusApp(url) {
+// Open the notification's target.
+//
+// For a same-origin target, reuse an existing window and navigate it there --
+// focusing without navigating would land her back on the app instead of the
+// timesheet, which is the one journey the notification exists to shorten.
+//
+// For an external target (the real Deloitte timesheet) always open a new
+// window. Navigating our own window off-origin would consume the only
+// same-origin client we have, so every later notification tap would spawn a
+// fresh window instead of reusing this one.
+async function openTarget(url) {
+  const target = new URL(url || '/', self.location.origin);
+  if (target.origin !== self.location.origin) {
+    return clients.openWindow(target.href);
+  }
+
   const all = await clients.matchAll({ type: 'window', includeUncontrolled: true });
   for (const c of all) {
     if (!c.url.startsWith(self.location.origin)) continue;
-    if ('navigate' in c && url) {
+    if ('navigate' in c) {
       try {
-        const navigated = await c.navigate(url);
+        const navigated = await c.navigate(target.href);
         return (navigated || c).focus();
       } catch {
-        // Cross-origin targets reject navigate(); fall back to a new window.
-        return clients.openWindow(url);
+        return c.focus();
       }
     }
     if ('focus' in c) return c.focus();
   }
-  return clients.openWindow(url);
+  return clients.openWindow(target.href);
 }
 
 self.addEventListener('notificationclick', (event) => {
@@ -99,5 +110,5 @@ self.addEventListener('notificationclick', (event) => {
 
   // Default tap and the explicit "open" action both go straight to the
   // timesheet, because the gap between intent and action is where this fails.
-  event.waitUntil(focusApp(url || '/'));
+  event.waitUntil(openTarget(url));
 });

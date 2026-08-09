@@ -21,8 +21,6 @@ import {
   getWeek,
   getFlag,
   setFlag,
-  getRecord,
-  putRecord,
   clearHistory,
 } from '../lib/store.mjs';
 import { publicKey, pushConfigured, sendTo } from '../lib/push.mjs';
@@ -30,6 +28,7 @@ import { buildState, confirmWeek, unconfirmWeek, runTick } from '../lib/core.mjs
 import { weekKeyFor } from '../../lib/week.js';
 import { STAGES, SIEGE_STAGE, OVERDUE_STAGE, MISSED_STAGE } from '../../lib/escalation.js';
 import { validateSettingsPatch } from '../../lib/settings.js';
+import { createThrottle, clientKey } from '../../lib/throttle.js';
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
@@ -43,6 +42,9 @@ function sessionRole(req: Request): string | null {
   return verifyToken(parseCookies(req.headers.get('cookie'))[COOKIE], secret);
 }
 
+
+// Module scope so it survives across invocations on a warm instance.
+const loginThrottle = createThrottle();
 
 export default async (req: Request) => {
   const { pathname } = new URL(req.url);
@@ -80,18 +82,14 @@ export default async (req: Request) => {
     const secret = env('SESSION_SECRET');
     if (!secret || !env('OWNER_CODE')) return json({ error: 'codes_not_configured' }, 500);
 
-    // The access codes are short and human-typeable, which is the right call
-    // for a phone but leaves them guessable if an attacker can try forever.
-    // Lock out after a handful of misses; a real user never hits this.
-    const throttle = (await getRecord<{ fails: number; until: number }>('login_throttle')) ?? {
-      fails: 0,
-      until: 0,
-    };
-    if (throttle.until > Date.now()) {
-      return json(
-        { error: 'locked_out', retryInSeconds: Math.ceil((throttle.until - Date.now()) / 1000) },
-        429
-      );
+    // Keyed per client, and held in memory rather than in Blobs. A global
+    // counter would let a stranger's wrong guesses lock Maria out of her own
+    // app; persisting each failure would let anonymous traffic drive unbounded
+    // metered writes. Both are worse than the guessing they defend against.
+    const who = clientKey(req.headers);
+    const gate = loginThrottle.check(who);
+    if (gate.locked) {
+      return json({ error: 'locked_out', retryInSeconds: gate.retryInSeconds }, 429);
     }
 
     const role = roleForCode((body as any).code, {
@@ -100,17 +98,11 @@ export default async (req: Request) => {
     });
 
     if (!role) {
-      const fails = throttle.fails + 1;
-      const locked = fails >= 8;
-      await putRecord('login_throttle', {
-        fails: locked ? 0 : fails,
-        until: locked ? Date.now() + 15 * 60_000 : 0,
-      });
-      console.warn(`[auth] failed login (${fails}/8)${locked ? ' -- locked for 15 min' : ''}`);
+      loginThrottle.fail(who);
       return json({ error: 'bad_code' }, 401);
     }
 
-    if (throttle.fails) await putRecord('login_throttle', { fails: 0, until: 0 });
+    loginThrottle.reset(who);
     return json({ role }, 200, { 'Set-Cookie': cookieString(issueToken(role, secret)) });
   }
 

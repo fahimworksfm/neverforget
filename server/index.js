@@ -32,11 +32,29 @@ import {
 import { startScheduler, tick } from './scheduler.js';
 import { COOKIE, issue, verify, roleForCode, requireRole, cookieOptions, codesConfigured } from './auth.js';
 import { validateSettingsPatch } from '../lib/settings.js';
+import { createThrottle } from '../lib/throttle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 const app = express();
+
+// Behind a reverse proxy (Fly, Render, nginx) the real client address arrives
+// in X-Forwarded-For, and Express only believes that header when told which
+// hops to trust. Left unset, every request looks like it came from the proxy,
+// which would collapse the per-client login throttle back into a single global
+// counter -- exactly the lockout-anyone bug it exists to avoid. Trusting it
+// unconditionally is the opposite mistake: then a client can spoof the header
+// and sidestep the throttle entirely. So it is opt-in and explicit.
+const TRUST_PROXY = (() => {
+  const raw = process.env.TRUST_PROXY;
+  if (!raw) return false;
+  if (raw === 'true') return true;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  return raw; // preset name or comma-separated address list
+})();
+app.set('trust proxy', TRUST_PROXY);
+
 app.use(express.json({ limit: '64kb' }));
 app.use(cookieParser());
 
@@ -107,9 +125,9 @@ app.get('/api/session', (req, res) => {
 });
 
 // The access codes are short and human-typeable, which is right for a phone
-// but leaves them guessable given unlimited attempts. A real user never hits
-// this ceiling.
-const loginThrottle = { fails: 0, until: 0 };
+// but leaves them guessable given unlimited attempts. Keyed per client so a
+// stranger's wrong guesses can never lock out the account holder.
+const loginThrottle = createThrottle();
 
 app.post('/api/login', (req, res) => {
   const { code } = req.body || {};
@@ -119,23 +137,18 @@ app.post('/api/login', (req, res) => {
   if (typeof code !== 'string' || !code) {
     return res.status(400).json({ error: 'code_required' });
   }
-  if (loginThrottle.until > Date.now()) {
-    return res.status(429).json({
-      error: 'locked_out',
-      retryInSeconds: Math.ceil((loginThrottle.until - Date.now()) / 1000),
-    });
+  const who = req.ip || 'unknown';
+  const gate = loginThrottle.check(who);
+  if (gate.locked) {
+    return res.status(429).json({ error: 'locked_out', retryInSeconds: gate.retryInSeconds });
   }
   const role = roleForCode(code);
   if (!role) {
-    loginThrottle.fails += 1;
-    if (loginThrottle.fails >= 8) {
-      loginThrottle.fails = 0;
-      loginThrottle.until = Date.now() + 15 * 60_000;
-    }
+    loginThrottle.fail(who);
     logEvent(null, 'login_failed');
     return res.status(401).json({ error: 'bad_code' });
   }
-  loginThrottle.fails = 0;
+  loginThrottle.reset(who);
   res.cookie(COOKIE, issue(role), cookieOptions());
   logEvent(null, 'login', role);
   res.json({ role });

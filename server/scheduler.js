@@ -88,9 +88,16 @@ async function fire(weekKey, stage, now, cfg, { isFixedRung = false } = {}) {
 // Close out any week that fell off the end of its grace window while still
 // pending. The tick only ever looks at the current week, so without this an
 // abandoned one stays `pending` forever -- and because the streak functions
-// skip pending weeks, the miss is silently forgiven. Swept weeks are recorded
-// but never announced: a push about a three-week-old Friday is noise.
+// skip pending weeks, the miss is silently forgiven.
+//
+// Swept weeks are recorded but never announced: a push about a three-week-old
+// Friday is noise. Rate-limited to once an hour, because the condition it
+// looks for changes at most once a week.
+let lastSweep = 0;
+
 function sweepAbandoned(currentKey, cfg, now) {
+  if (now.getTime() - lastSweep < 3_600_000) return 0;
+  lastSweep = now.getTime();
   const stale = db
     .prepare("SELECT week_key FROM weeks WHERE status = 'pending' AND week_key != ?")
     .all(currentKey)
@@ -101,13 +108,10 @@ function sweepAbandoned(currentKey, cfg, now) {
       `UPDATE weeks SET status = 'missed', missed_at = ?, on_time = 0,
        streak_lost = 0, missed_announced_at = ? WHERE week_key = ? AND status = 'pending'`
     ).run(now.toISOString(), now.toISOString(), key);
-    logEvent(key, 'missed_swept');
-    if (settingBool('stakes_enabled')) {
-      db.prepare(
-        `INSERT INTO stakes (week_key, amount, status, created_at) VALUES (?, ?, 'owed', ?)
-         ON CONFLICT(week_key) DO NOTHING`
-      ).run(key, Number(setting('stakes_amount')), now.toISOString());
-    }
+    // Deliberately no stake. A swept week is one the app never actually
+    // nudged her about -- downtime, a fresh deploy, leftover dry runs -- and
+    // billing for silence would make money appear out of nowhere.
+    logEvent(key, 'missed_swept', 'no stake charged');
   }
   return stale.length;
 }

@@ -20,6 +20,7 @@ async function api(path, options = {}) {
     const err = new Error(body.error || res.statusText);
     err.status = res.status;
     err.code = body.error;
+    err.retryInSeconds = body.retryInSeconds;
     // Only bounce to login for an expired session, never for a failed login
     // attempt -- that would wipe the form mid-diagnosis.
     if (res.status === 401 && !path.endsWith('/login')) showLogin();
@@ -31,6 +32,10 @@ async function api(path, options = {}) {
 function loginErrorMessage(err) {
   if (err.code === 'codes_not_configured') {
     return 'The server cannot see its access codes. Check the Netlify environment variables.';
+  }
+  if (err.code === 'locked_out') {
+    const mins = Math.ceil((err.retryInSeconds || 60) / 60);
+    return `Too many attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}.`;
   }
   if (err.status === 401) return 'That code did not work.';
   if (err.status) return `Login failed (HTTP ${err.status}).`;
@@ -364,20 +369,30 @@ $('resetBtn').onclick = async () => {
 };
 
 $('saveBtn').onclick = async () => {
-  settingsDirty = false;
-  await api('/api/settings', {
-    method: 'POST',
-    body: JSON.stringify({
-      timezone: $('tz').value,
-      timesheet_url: $('url').value.trim(),
-      stakes_enabled: $('stakesOn').value,
-      stakes_amount: $('amount').value,
-      stakes_recipient: $('recipient').value.trim(),
-    }),
-  });
-  $('saved').classList.remove('hide');
-  setTimeout(() => $('saved').classList.add('hide'), 2500);
-  await refresh();
+  const saved = $('saved');
+  try {
+    await api('/api/settings', {
+      method: 'POST',
+      body: JSON.stringify({
+        timezone: $('tz').value,
+        timesheet_url: $('url').value.trim(),
+        stakes_enabled: $('stakesOn').value,
+        stakes_amount: $('amount').value,
+        stakes_recipient: $('recipient').value.trim(),
+      }),
+    });
+    // Only drop the dirty flag once the values are actually stored. Clearing
+    // it first meant a failed save let the poller quietly overwrite the form.
+    settingsDirty = false;
+    saved.textContent = 'Saved.';
+    saved.className = 'notice notice-ok';
+    await refresh();
+  } catch (e) {
+    saved.textContent = `Not saved (${e.code || e.status || 'no connection'}). Your changes are still here.`;
+    saved.className = 'notice notice-bad';
+  }
+  saved.classList.remove('hide');
+  setTimeout(() => saved.classList.add('hide'), 4000);
 };
 
 $('logout').onclick = async (e) => {

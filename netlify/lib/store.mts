@@ -153,9 +153,15 @@ export async function ensureWeek(weekKey: string): Promise<Week> {
 export async function updateWeek(
   weekKey: string,
   mutate: (w: Week) => Week,
-  guard?: (w: Week) => boolean
+  guard?: (w: Week) => boolean,
+  { createIfMissing = true }: { createIfMissing?: boolean } = {}
 ): Promise<Week | null> {
-  const current = (await getWeek(weekKey)) ?? blankWeek(weekKey);
+  const existing = await getWeek(weekKey);
+  // Without this the blankWeek fallback lets a caller resurrect a week that
+  // /api/reset deleted mid-tick -- and a blank week is `pending`, so a status
+  // guard would happily wave it through and re-close (and re-charge) it.
+  if (!existing && !createIfMissing) return null;
+  const current = existing ?? blankWeek(weekKey);
   if (guard && !guard(current)) return null;
   const next = mutate({ ...current });
   await store().setJSON(`weeks/${weekKey}`, next);
