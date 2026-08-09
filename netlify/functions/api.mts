@@ -26,7 +26,7 @@ import {
 import { publicKey, pushConfigured, sendTo } from '../lib/push.mjs';
 import { buildState, confirmWeek, unconfirmWeek, runTick } from '../lib/core.mjs';
 import { weekKeyFor } from '../../lib/week.js';
-import { STAGES, SIEGE_STAGE, OVERDUE_STAGE, MISSED_STAGE } from '../../lib/escalation.js';
+import { PREVIEWABLE } from '../../lib/escalation.js';
 import { validateSettingsPatch } from '../../lib/settings.js';
 import { createThrottle, clientKey } from '../../lib/throttle.js';
 
@@ -227,8 +227,7 @@ export default async (req: Request) => {
     case 'preview': {
       if (!ownerOnly()) return json({ error: 'forbidden' }, 403);
       const id = String((body as any).stage || 'evening');
-      const stage =
-        [...STAGES, SIEGE_STAGE, OVERDUE_STAGE, MISSED_STAGE].find((s: any) => s.id === id);
+      const stage = PREVIEWABLE.find((s: any) => s.id === id);
       if (!stage) return json({ error: 'unknown_stage', id }, 400);
 
       const settings = await getSettings();

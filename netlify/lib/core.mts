@@ -12,8 +12,14 @@ import {
   deadlineFor,
   formatWeekLabel,
   localParts,
+  formatClock,
 } from '../../lib/week.js';
-import { decide, pressureLevel, STAGES, SIEGE_BEGINS_AT } from '../../lib/escalation.js';
+import {
+  decide,
+  pressureLevel,
+  PREVIEWABLE,
+  SIEGE_BEGINS_AT,
+} from '../../lib/escalation.js';
 import {
   getSettings,
   config,
@@ -86,7 +92,15 @@ export async function buildState(role: string) {
       partner: (await getSubs('partner')).length,
     },
     pushConfigured: pushConfigured(),
-    ladder: STAGES.map((s: any) => ({ id: s.id, at: s.at, title: s.title })),
+    // Clock strings are formatted here, once, so the UI never restates the
+    // ladder's times and cannot drift when a rung moves.
+    ladder: PREVIEWABLE.map((s: any) => ({
+      id: s.id,
+      at: s.at ?? null,
+      clock: s.clockLabel ?? formatClock(s.at),
+      label: s.label,
+      title: s.title,
+    })),
   };
 }
 

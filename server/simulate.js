@@ -19,7 +19,7 @@ delete process.env.VAPID_PRIVATE_KEY;
 
 const { setting, setSetting, getWeek, currentStreak } = await import('./db.js');
 const { tick } = await import('./scheduler.js');
-const { zonedToUtc, weekKeyFor, localParts } = await import('../lib/week.js');
+const { zonedToUtc, weekKeyFor, localParts, formatClock } = await import('../lib/week.js');
 const db = (await import('./db.js')).default;
 
 const TZ = setting('timezone');
@@ -56,7 +56,7 @@ let fires = 0;
 function stamp(date) {
   const p = localParts(date, TZ);
   const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][p.weekday];
-  return `${day} ${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
+  return `${day} ${formatClock(p.hour * 60 + p.minute)}`;
 }
 
 for (let m = 0; m <= TOTAL_MINUTES; m += STEP_MINUTES) {

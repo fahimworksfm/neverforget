@@ -12,15 +12,21 @@ time.
 
 | Friday (local) | What happens |
 |---|---|
-| 10:00 | Gentle reminder |
-| 14:00 | Firmer |
-| 16:00 | "Eight hours left" |
-| 17:00 | "This is the part where it gets annoying" |
-| 22:00 | Two-hour warning |
-| 23:30 | Thirty-minute warning |
-| 23:30 → midnight | **Siege** — repeats every 15 min, persistent notifications |
+| 10 AM | Gentle reminder |
+| 2 PM | Firmer |
+| 4 PM | "Eight hours left" |
+| 6 PM | "Work is over. This is not." |
+| **8 PM** | **"Politeness is over."** Siege begins — repeats every 15 min |
+| 10 PM | Two-hour warning; siege tightens to every 10 min |
+| 11 PM | Siege tightens to every 5 min |
+| 11:15 PM | Forty-five-minute warning |
 | Midnight | Week marked missed. Streak resets, stake is recorded |
-| Sat/Sun 08:00–22:00 | Repeats every 45 min until submitted |
+| Sat/Sun 8 AM – 10 PM | Repeats every 45 min until submitted |
+
+The siege tightens as the deadline nears rather than running at a fixed
+cadence: the same nudge every fifteen minutes reads as background noise by
+hour three, and the cost of ignoring it is not constant. Doing nothing from
+8 PM to midnight costs about 25 notifications; confirming costs one tap.
 
 Two things stop the escalation, and only two: tapping **I submitted my
 timesheet** in the app, or tapping **I submitted it** directly on the
@@ -28,11 +34,11 @@ notification.
 
 Design decisions worth knowing:
 
-- **Overnight nudges are suppressed** (22:00–08:00 by default). Nagging at 3am
+- **Overnight nudges are suppressed** (10 PM – 8 AM by default). Nagging at 3am
   produces an uninstalled app, not a submitted timesheet. The Friday ladder
   itself ignores quiet hours, because the deadline *is* midnight.
 - **The miss is recorded the instant it happens**, at midnight, but announced at
-  08:00. The streak shouldn't depend on anyone being awake to hear about it.
+  8 AM. The streak shouldn't depend on anyone being awake to hear about it.
 - **An overdue week keeps ownership through the weekend** (4 days by default),
   so Saturday doesn't silently roll to a fresh week and forgive the miss.
 - **Notifications carry the timesheet link.** The gap between "I should do this"
@@ -132,8 +138,11 @@ Rather than waiting a week to find out whether it works:
 
 ```bash
 npm run simulate            # nobody confirms — watch the full escalation
-npm run simulate -- 16:30   # confirmed at 16:30 Friday — watch it stop
+npm run simulate -- 20:30   # confirmed at 8:30 PM Friday — watch it stop
 ```
+
+The argument is a 24-hour time, because it is a command-line flag; everything
+the app *displays* is 12-hour.
 
 This runs a real week through the real scheduler against a throwaway database
 in `data/sim`, printing every notification it would send.
@@ -143,8 +152,10 @@ in `data/sim`, printing every notification it would send.
 ```
 lib/                Shared by both deployment targets
   escalation.js     The ladder — rungs, siege, quiet hours (pure)
-  week.js           Timezone/DST math, week ownership, deadlines (pure)
+  week.js           Timezone/DST math, deadlines, clock formatting (pure)
   auth.js           Session tokens, access codes (no ambient env reads)
+  settings.js       Defaults, bounds, validation — one definition
+  throttle.js       Per-client failed-attempt limiting
 
 server/             Self-hosted target
   index.js          Express app, API, auth-gated routes

@@ -20,7 +20,14 @@ import db, {
   clearHistory,
 } from './db.js';
 import { publicKey, saveSubscription, removeSubscription, subscriptionCount, sendTo, pushConfigured } from './push.js';
-import { weekKeyFor, hoursUntilDeadline, minutesIntoFriday, deadlineFor, formatWeekLabel } from '../lib/week.js';
+import {
+  weekKeyFor,
+  hoursUntilDeadline,
+  minutesIntoFriday,
+  deadlineFor,
+  formatWeekLabel,
+  formatClock,
+} from '../lib/week.js';
 import {
   pressureLevel,
   STAGES,
@@ -28,6 +35,7 @@ import {
   SIEGE_STAGE,
   OVERDUE_STAGE,
   MISSED_STAGE,
+  PREVIEWABLE,
 } from '../lib/escalation.js';
 import { startScheduler, tick } from './scheduler.js';
 import { COOKIE, issue, verify, roleForCode, requireRole, cookieOptions, codesConfigured } from './auth.js';
@@ -113,7 +121,15 @@ function buildState() {
     timesheetUrl: setting('timesheet_url'),
     devices: { owner: subscriptionCount('owner'), partner: subscriptionCount('partner') },
     pushConfigured,
-    ladder: STAGES.map((s) => ({ id: s.id, at: s.at, title: s.title })),
+    // Clock strings are formatted here, once, so the UI never restates the
+    // ladder's times and cannot drift when a rung moves.
+    ladder: PREVIEWABLE.map((s) => ({
+      id: s.id,
+      at: s.at ?? null,
+      clock: s.clockLabel ?? formatClock(s.at),
+      label: s.label,
+      title: s.title,
+    })),
   };
 }
 
@@ -322,7 +338,7 @@ app.post('/api/tick', requireRole('owner'), async (req, res) => {
 // judge whether Friday is too gentle or too brutal is to feel the real thing.
 app.post('/api/preview', requireRole('owner'), async (req, res) => {
   const id = String(req.body?.stage || 'evening');
-  const stage = [...STAGES, SIEGE_STAGE, OVERDUE_STAGE, MISSED_STAGE].find((s) => s.id === id);
+  const stage = PREVIEWABLE.find((s) => s.id === id);
   if (!stage) return res.status(400).json({ error: 'unknown_stage', id });
 
   const delivered = await sendTo('owner', {

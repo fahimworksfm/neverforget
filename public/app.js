@@ -183,6 +183,7 @@ async function refresh() {
   // Only repopulate settings when they are not being edited -- the 60s poll
   // used to overwrite half-typed input once a minute.
   if (!settingsDirty) fillSettings();
+  fillPreviewStages(state.ladder);
   updateNotifState();
 }
 
@@ -205,6 +206,19 @@ for (const evt of ['input', 'change']) {
   document.addEventListener(evt, (e) => {
     if (e.target && SETTING_FIELDS.includes(e.target.id)) settingsDirty = true;
   });
+}
+
+// Built from the ladder the server reports, never from hard-coded text. The
+// old static list silently went stale the moment a rung moved.
+function fillPreviewStages(ladder) {
+  const select = $('previewStage');
+  if (!ladder || select.dataset.filled === String(ladder.length)) return;
+  const keep = select.value;
+  select.innerHTML = ladder
+    .map((s) => `<option value="${s.id}">${s.clock} — ${s.label}</option>`)
+    .join('');
+  select.dataset.filled = String(ladder.length);
+  select.value = keep && ladder.some((s) => s.id === keep) ? keep : 'hardstop';
 }
 
 function fillSettings() {
