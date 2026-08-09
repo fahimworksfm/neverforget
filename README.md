@@ -76,11 +76,43 @@ Web push on iOS only works for home-screen apps. Open the site in Safari, tap
 notifications there. The app detects this case and says so. Notifications will
 not arrive if it's left as a Safari tab.
 
-### Deploying
+## Deploying
 
-Needs a always-on Node process — the scheduler ticks every 60 seconds — so a
-small VPS, Fly.io, Render, or Railway all work; static/serverless hosts do not.
-Requirements:
+There are two supported targets. They share all the logic in `lib/` and differ
+only in how state is stored and how the clock is driven.
+
+### Netlify (already provisioned)
+
+The `neverforget-timesheet` project exists, and every environment variable
+(VAPID keys, session secret, both access codes, timezone) is already set on it.
+All that remains is uploading the code:
+
+```bash
+git clone https://github.com/fahimworksfm/neverforget
+cd neverforget
+git checkout claude/timesheet-reminder-app-wpup7u
+npm install
+npx netlify deploy --prod --site 67d46c9c-7552-4c94-9b7d-17f39fce1d23
+```
+
+Or connect the repo in the Netlify UI (*Project configuration → Build & deploy →
+Link repository*) so every push deploys automatically. Either way the settings
+in `netlify.toml` are picked up.
+
+On this target:
+
+- State lives in **Netlify Blobs** instead of SQLite, with strong consistency
+  so a confirm is visible to the scheduler immediately.
+- The scheduler is a **scheduled function** (`netlify/functions/tick.mts`)
+  running every two minutes rather than an in-process timer. Scheduled
+  functions only run on **published production deploys** — not previews.
+- After the first deploy, log in as owner and set the timesheet URL, then hit
+  **Send a test notification** to confirm delivery.
+
+### Self-hosted
+
+Needs an always-on Node process — the scheduler ticks every 60 seconds — so a
+small VPS, Fly.io, Render, or Railway all work. Requirements:
 
 - **HTTPS**, mandatory for service workers and push.
 - A persistent volume mounted at `DATA_DIR` (default `./data`), or the SQLite
@@ -102,20 +134,31 @@ in `data/sim`, printing every notification it would send.
 ## Layout
 
 ```
-server/
-  index.js        Express app, API, auth-gated routes
-  scheduler.js    60s tick; decides and sends
-  escalation.js   The ladder — stages, siege, quiet hours (pure logic)
-  week.js         Timezone/DST math, week ownership, deadlines
-  db.js           SQLite schema, settings, streaks
-  push.js         Web push delivery, dead-subscription cleanup
-  simulate.js     Accelerated week simulator
-public/           PWA: owner app, partner view, service worker
+lib/                Shared by both deployment targets
+  escalation.js     The ladder — rungs, siege, quiet hours (pure)
+  week.js           Timezone/DST math, week ownership, deadlines (pure)
+  auth.js           Session tokens, access codes (no ambient env reads)
+
+server/             Self-hosted target
+  index.js          Express app, API, auth-gated routes
+  scheduler.js      60s tick
+  db.js             SQLite schema, settings, streaks
+  push.js           Web push delivery, dead-subscription cleanup
+  simulate.js       Accelerated week simulator
+
+netlify/            Netlify target
+  functions/api.mts   All /api/* routes
+  functions/tick.mts  Scheduled function, every 2 minutes
+  lib/store.mts       Blobs-backed state (strong consistency)
+  lib/core.mts        buildState / confirm / runTick
+
+public/             PWA: owner app, partner view, service worker
 ```
 
-`escalation.js` is pure and takes the clock as input, which is what makes the
-simulator possible — the ladder can be replayed at any speed without mocking
-timers.
+Everything in `lib/` is pure and takes the clock as an argument. That is what
+lets the same ladder run under an in-process timer and a serverless cron
+without branching, and what makes the simulator possible — a week can be
+replayed at any speed without mocking timers.
 
 ## Settings
 
