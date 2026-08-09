@@ -9,6 +9,8 @@ import {
 } from '../../lib/auth.js';
 import {
   env,
+  envSource,
+  hasNetlifyGlobal,
   getSettings,
   saveSettings,
   addSub,
@@ -67,6 +69,15 @@ export default async (req: Request) => {
         sessionSecret: Boolean(env('SESSION_SECRET')),
         vapidPublic: Boolean(env('VAPID_PUBLIC_KEY')),
         vapidPrivate: Boolean(env('VAPID_PRIVATE_KEY')),
+      },
+      // Distinguishes "the variable is not set on the site" from "it is set
+      // but this runtime exposes it somewhere else". Names and booleans only.
+      diag: {
+        netlifyGlobal: hasNetlifyGlobal(),
+        ownerCodeFrom: envSource('OWNER_CODE'),
+        visibleEnvNames: Object.keys(process.env).filter((k) =>
+          ['OWNER_CODE', 'PARTNER_CODE', 'SESSION_SECRET', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'TZ_HOUSEHOLD', 'VAPID_CONTACT'].includes(k)
+        ),
       },
     });
   }

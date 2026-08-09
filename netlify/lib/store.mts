@@ -55,10 +55,41 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   quiet_start_hour: '22',
 };
 
+// Read from BOTH sources rather than choosing one.
+//
+// The earlier version returned as soon as the `Netlify` global existed, so if
+// `Netlify.env.get()` came back empty it never consulted `process.env` -- and
+// every secret silently read as missing. Which of the two is populated depends
+// on runtime and plan (scoped env vars are not a free-tier feature), so the
+// only safe thing is to try both and take whichever answers.
+function fromNetlifyEnv(name: string): string | undefined {
+  try {
+    // @ts-expect-error -- the Netlify global is absent under plain node.
+    if (typeof Netlify !== 'undefined' && Netlify?.env?.get) {
+      // @ts-expect-error -- see above.
+      return Netlify.env.get(name) || undefined;
+    }
+  } catch {
+    // A runtime without the global should degrade, not throw.
+  }
+  return undefined;
+}
+
 export function env(name: string): string | undefined {
-  // @ts-expect-error -- the Netlify global is absent when running under plain node.
-  if (typeof Netlify !== 'undefined') return Netlify.env.get(name) ?? undefined;
-  return process.env[name];
+  return fromNetlifyEnv(name) ?? process.env[name] ?? undefined;
+}
+
+// Where a given name resolves from. Booleans only -- never values.
+export function envSource(name: string) {
+  return {
+    netlify: Boolean(fromNetlifyEnv(name)),
+    process: Boolean(process.env[name]),
+  };
+}
+
+export function hasNetlifyGlobal(): boolean {
+  // @ts-expect-error -- probing for the global is the entire point.
+  return typeof Netlify !== 'undefined';
 }
 
 function store() {
