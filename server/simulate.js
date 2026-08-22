@@ -17,7 +17,7 @@ process.env.DATA_DIR = SIM_DIR;
 delete process.env.VAPID_PUBLIC_KEY;
 delete process.env.VAPID_PRIVATE_KEY;
 
-const { setting, setSetting, getWeek, currentStreak } = await import('./db.js');
+const { setting, setSetting, getWeek, currentStreak, setHolidayCache } = await import('./db.js');
 const { tick } = await import('./scheduler.js');
 const { zonedToUtc, weekKeyFor, localParts, formatClock } = await import('../lib/week.js');
 const db = (await import('./db.js')).default;
@@ -26,10 +26,14 @@ const TZ = setting('timezone');
 setSetting('stakes_enabled', '1');
 setSetting('stakes_amount', '20');
 
-const confirmArg = process.argv[2];
+const args = process.argv.slice(2);
+const timeArg = args.find((a) => /^\d{1,2}:\d{2}$/.test(a));
+const asHoliday = args.includes('--holiday');
+const asShift = args.includes('--shift');
+
 let confirmAtMinutes = null;
-if (confirmArg && /^\d{1,2}:\d{2}$/.test(confirmArg)) {
-  const [h, m] = confirmArg.split(':').map(Number);
+if (timeArg) {
+  const [h, m] = timeArg.split(':').map(Number);
   confirmAtMinutes = h * 60 + m;
 }
 
@@ -39,17 +43,33 @@ const fridayKey = weekKeyFor(now, TZ, 4);
 const [fy, fm, fd] = fridayKey.split('-').map(Number);
 const start = zonedToUtc(fy, fm, fd, 0, 0, TZ);
 
+// Always seed the cache -- otherwise every tick would attempt a live fetch,
+// and the simulator would spend its whole run on failed network calls.
+setSetting('holiday_handling', asHoliday ? (asShift ? 'shift' : 'soften') : 'off');
+setHolidayCache({
+  country: 'US',
+  years: [Number(fridayKey.slice(0, 4))],
+  fetchedAt: Date.now(),
+  days: asHoliday ? { [fridayKey]: 'Simulated Holiday' } : {},
+});
+
 console.log(`\n  Simulating week ${fridayKey}  (timezone ${TZ})`);
+if (asHoliday) {
+  console.log(`  Holiday: the Friday is a public holiday, handling = ${asShift ? 'shift' : 'soften'}`);
+}
 console.log(
   confirmAtMinutes === null
     ? '  Scenario: she never confirms.\n'
-    : `  Scenario: she confirms at ${confirmArg} on Friday.\n`
+    : `  Scenario: she confirms at ${timeArg} on Friday.\n`
 );
 console.log('  time                  event');
 console.log('  ' + '-'.repeat(74));
 
 const STEP_MINUTES = 5;
-const TOTAL_MINUTES = 3 * 24 * 60; // Friday 00:00 through Sunday midnight.
+// Start a day early when the due day may shift back, or the shifted ladder
+// would run before the window opens and the simulation would show nothing.
+const START_OFFSET_MINUTES = asHoliday && asShift ? -2 * 24 * 60 : 0;
+const TOTAL_MINUTES = 3 * 24 * 60 - START_OFFSET_MINUTES;
 let confirmed = false;
 let fires = 0;
 
@@ -59,7 +79,7 @@ function stamp(date) {
   return `${day} ${formatClock(p.hour * 60 + p.minute)}`;
 }
 
-for (let m = 0; m <= TOTAL_MINUTES; m += STEP_MINUTES) {
+for (let m = START_OFFSET_MINUTES; m <= TOTAL_MINUTES; m += STEP_MINUTES) {
   const at = new Date(start.getTime() + m * 60_000);
 
   if (!confirmed && confirmAtMinutes !== null && m >= confirmAtMinutes) {
@@ -85,5 +105,6 @@ const owed = db.prepare("SELECT COALESCE(SUM(amount),0) AS t FROM stakes WHERE s
 console.log('  ' + '-'.repeat(74));
 console.log(`\n  Notifications fired: ${fires}`);
 console.log(`  Final status:        ${week.status}`);
+if (week.holiday_name) console.log(`  Holiday:             ${week.holiday_name} (due shift ${week.due_shift}d)`);
 console.log(`  Streak:              ${currentStreak()}`);
 console.log(`  Stakes owed:         $${owed}\n`);

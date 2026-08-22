@@ -28,6 +28,37 @@ cadence: the same nudge every fifteen minutes reads as background noise by
 hour three, and the cost of ignoring it is not constant. Doing nothing from
 8 PM to midnight costs about 25 notifications; confirming costs one tap.
 
+### Public holidays
+
+If the Friday is a public holiday the ladder changes, because two things go
+wrong otherwise: nagging someone 25 times on Christmas Day is how an app gets
+deleted, and — more seriously — when Friday is a company holiday the timesheet
+deadline usually moves *earlier*, so an unaware app sits silent on the real
+deadline and then escalates on a day nobody is working.
+
+Holidays come from [Nager.Date](https://date.nager.at) (no key required). The
+year is fetched once and cached for a week, so the network is never in the path
+of a decision; if the fetch fails the app keeps using what it last knew, and
+with no data at all it behaves exactly as it did before the feature existed.
+
+Three options, set under Settings:
+
+| Setting | Behaviour |
+|---|---|
+| **Go easy** (default) | Two gentle reminders, no siege. The week closes as *skipped*: no streak reset, no stake, no weekend nagging. |
+| **Due the day before** | The whole ladder runs a working day early — Thursday, or Wednesday when Thursday is also a holiday, as at Thanksgiving. |
+| **Ignore** | Holidays are treated as ordinary Fridays. |
+
+*Go easy* is the default because it is the only option that cannot do harm.
+Guessing *due the day before* wrongly would nag a day early and then record a
+miss on a day she was never expected to file — causing the exact failure the
+app exists to prevent. A skipped week is neutral in the streak: it neither
+extends it nor breaks it, because she was never asked to do anything.
+
+If holiday data arrives *after* a deadline has already passed (a first deploy,
+a failed fetch), the week is corrected from missed to skipped and any stake is
+dropped. She should not stay penalised for the app's own ignorance.
+
 Two things stop the escalation, and only two: tapping **I submitted my
 timesheet** in the app, or tapping **I submitted it** directly on the
 notification.
@@ -137,8 +168,10 @@ small VPS, Fly.io, Render, or Railway all work. Requirements:
 Rather than waiting a week to find out whether it works:
 
 ```bash
-npm run simulate            # nobody confirms — watch the full escalation
-npm run simulate -- 20:30   # confirmed at 8:30 PM Friday — watch it stop
+npm run simulate                     # nobody confirms — watch the full escalation
+npm run simulate -- 20:30            # confirmed at 8:30 PM Friday — watch it stop
+npm run simulate -- --holiday        # the Friday is a public holiday
+npm run simulate -- --holiday --shift # ...and the deadline moves a day earlier
 ```
 
 The argument is a 24-hour time, because it is a command-line flag; everything
@@ -156,6 +189,7 @@ lib/                Shared by both deployment targets
   auth.js           Session tokens, access codes (no ambient env reads)
   settings.js       Defaults, bounds, validation — one definition
   throttle.js       Per-client failed-attempt limiting
+  holidays.js       Nager.Date fetch, cache, and per-week resolution
 
 server/             Self-hosted target
   index.js          Express app, API, auth-gated routes

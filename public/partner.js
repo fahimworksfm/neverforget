@@ -45,10 +45,12 @@ function startLive() {
 
 // Fraction of Friday still available, 0..1. Drives the arc.
 function remainingFraction(week) {
-  if (week.status === 'confirmed') return 1;
+  // A skipped holiday week is resolved, not failed -- show a full ring rather
+  // than the empty one that reads as "you ran out of time".
+  if (week.status === 'confirmed' || week.status === 'skipped') return 1;
   if (week.hoursLeft <= 0) return 0;
-  if (week.minutesIntoFriday < 0) return 1;
-  return Math.max(0, Math.min(1, 1 - week.minutesIntoFriday / 1440));
+  if (week.minutesIntoDueDay < 0) return 1;
+  return Math.max(0, Math.min(1, 1 - week.minutesIntoDueDay / 1440));
 }
 
 function drawDial(fraction) {

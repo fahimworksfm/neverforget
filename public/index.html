@@ -49,6 +49,8 @@
     Tap <b>Share → Add to Home Screen</b>, then open it from there.
   </div>
 
+  <div id="holidayBanner" class="notice notice-info hide"></div>
+
   <section class="focus">
     <div class="dial">
       <svg viewBox="0 0 200 200" aria-hidden="true">
@@ -83,6 +85,7 @@
       <span><i style="background:#34d399"></i>On time</span>
       <span><i style="background:#fbbf24"></i>Late</span>
       <span><i style="background:#f87171"></i>Missed</span>
+      <span><i class="dashed"></i>Holiday</span>
     </div>
   </section>
 
@@ -143,6 +146,24 @@
         <div class="hint">Optional. Opens straight from the notification. Leave
           blank if the timesheet will not load on a phone.</div>
       </div>
+      <div class="field">
+        <label for="holidayHandling">Public holidays</label>
+        <select id="holidayHandling">
+          <option value="soften">Go easy — a couple of reminders, no penalty</option>
+          <option value="shift">Timesheet is due the working day before</option>
+          <option value="off">Ignore holidays entirely</option>
+        </select>
+        <div class="hint" id="holidayHint">
+          What to do when the Friday is a public holiday.
+        </div>
+      </div>
+      <div class="field">
+        <label for="holidayCountry">Holiday calendar</label>
+        <input id="holidayCountry" type="text" maxlength="2" placeholder="US"
+               autocapitalize="characters" autocorrect="off" spellcheck="false">
+        <div class="hint">Two-letter country code, e.g. US, GB, CA, AU.</div>
+      </div>
+
       <div class="field">
         <label for="stakesOn">Stakes</label>
         <select id="stakesOn">

@@ -73,6 +73,11 @@ addColumn('weeks', 'missed_announced_at', 'TEXT');
 // Captured at the moment of the miss, because by announcement time the streak
 // has already been reset and the number would be gone.
 addColumn('weeks', 'streak_lost', 'INTEGER');
+// Which holiday (if any) fell on this week's due day, and how far the due day
+// was shifted. Stored per week so history stays truthful even if the setting
+// changes later.
+addColumn('weeks', 'holiday_name', 'TEXT');
+addColumn('weeks', 'due_shift', 'INTEGER NOT NULL DEFAULT 0');
 
 // Shared with the Netlify target; only the timezone may be seeded from env.
 const DEFAULTS = {
@@ -114,6 +119,22 @@ export function allSettings() {
   return out;
 }
 
+// The holiday cache rides in the settings table but is not user-editable --
+// it is fetched data, not a preference.
+export function getHolidayCache() {
+  const row = getSetting.get('holiday_cache');
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value);
+  } catch {
+    return null;
+  }
+}
+
+export function setHolidayCache(cache) {
+  putSetting.run('holiday_cache', JSON.stringify(cache));
+}
+
 export function logEvent(weekKey, type, detail = null) {
   db.prepare(
     'INSERT INTO events (week_key, type, detail, created_at) VALUES (?, ?, ?, ?)'
@@ -147,13 +168,16 @@ export function recentWeeks(limit = 12) {
 
 // Consecutive on-time weeks, counting back from the most recent resolved week.
 // A pending week is skipped rather than counted -- the streak is about
-// finished weeks, and the current one has not finished yet.
+// finished weeks, and the current one has not finished yet. A holiday week is
+// neutral: it neither extends the streak nor breaks it, because she was never
+// asked to do anything.
 export function currentStreak() {
   const weeks = db
     .prepare("SELECT * FROM weeks WHERE status != 'pending' ORDER BY week_key DESC")
     .all();
   let streak = 0;
   for (const w of weeks) {
+    if (w.status === 'skipped') continue;
     if (w.status === 'confirmed' && w.on_time === 1) streak += 1;
     else break;
   }
@@ -167,6 +191,7 @@ export function bestStreak() {
   let best = 0;
   let run = 0;
   for (const w of weeks) {
+    if (w.status === 'skipped') continue;
     if (w.status === 'confirmed' && w.on_time === 1) {
       run += 1;
       best = Math.max(best, run);

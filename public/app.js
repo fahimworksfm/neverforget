@@ -76,10 +76,12 @@ function formatCountdown(hours) {
 
 // Fraction of Friday still available, 0..1. Drives the arc.
 function remainingFraction(week) {
-  if (week.status === 'confirmed') return 1;
+  // A skipped holiday week is resolved, not failed -- show a full ring rather
+  // than the empty one that reads as "you ran out of time".
+  if (week.status === 'confirmed' || week.status === 'skipped') return 1;
   if (week.hoursLeft <= 0) return 0;
-  if (week.minutesIntoFriday < 0) return 1;
-  return Math.max(0, Math.min(1, 1 - week.minutesIntoFriday / 1440));
+  if (week.minutesIntoDueDay < 0) return 1;
+  return Math.max(0, Math.min(1, 1 - week.minutesIntoDueDay / 1440));
 }
 
 function drawDial(fraction) {
@@ -111,10 +113,18 @@ function render() {
   $('pressurePill').textContent = pressure.label;
 
   const confirmed = week.status === 'confirmed';
+  const skipped = week.status === 'skipped';
   const overdue = week.hoursLeft <= 0;
   const value = $('countdown');
 
-  if (confirmed) {
+  if (skipped) {
+    $('heroLabel').textContent = 'This week';
+    value.textContent = 'Holiday';
+    value.classList.add('is-word');
+    $('heroSub').textContent = `${week.label} was a holiday. Nothing owed, streak untouched.`;
+    $('confirmBtn').classList.remove('hide');
+    $('undoBtn').classList.add('hide');
+  } else if (confirmed) {
     $('heroLabel').textContent = 'This week';
     value.textContent = 'Done';
     value.classList.add('is-word');
@@ -151,7 +161,28 @@ function render() {
   $('stakeOwed').textContent = `$${stakes.outstanding}`;
   $('stakeTo').textContent = stakes.recipient;
 
+  renderHolidayBanner(state.holiday, week);
   $('iosBanner').classList.toggle('hide', !(isIOS && !isStandalone));
+}
+
+function renderHolidayBanner(holiday, week) {
+  const el = $('holidayBanner');
+  if (!holiday?.name) {
+    el.classList.add('hide');
+    return;
+  }
+  const dueLabel = new Date(`${week.dueDate}T12:00:00Z`).toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+  el.innerHTML =
+    holiday.shiftDays < 0
+      ? `<b>${holiday.name}</b> falls on this week's Friday, so the timesheet is
+         being treated as due <b>${dueLabel}</b>. Change that under Settings.`
+      : `<b>${holiday.name}</b> falls on this week's Friday. Reminders are
+         reduced and this week will not count against the streak.`;
+  el.classList.remove('hide');
 }
 
 // Re-render the countdown locally each second so the number moves without
@@ -197,7 +228,7 @@ const ZONES = [
   'Australia/Sydney', 'UTC',
 ];
 
-const SETTING_FIELDS = ['tz', 'url', 'stakesOn', 'amount', 'recipient'];
+const SETTING_FIELDS = ['tz', 'url', 'stakesOn', 'amount', 'recipient', 'holidayHandling', 'holidayCountry'];
 let settingsDirty = false;
 
 // One delegated listener. `change` matters as well as `input` because some
@@ -230,6 +261,11 @@ function fillSettings() {
   $('stakesOn').value = state.stakes.enabled ? '1' : '0';
   $('amount').value = state.stakes.amount;
   $('recipient').value = state.stakes.recipient;
+  $('holidayHandling').value = state.holiday?.handling || 'soften';
+  $('holidayCountry').value = state.holiday?.country || 'US';
+  $('holidayHint').textContent = state.holiday?.known
+    ? 'What to do when the Friday is a public holiday.'
+    : 'Holiday data has not been fetched yet — it loads on the next scheduled check.';
 }
 
 // ---------------------------------------------------------------- push

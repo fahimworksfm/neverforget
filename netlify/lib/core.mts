@@ -8,8 +8,9 @@
 import {
   weekKeyFor,
   hoursUntilDeadline,
-  minutesIntoFriday,
+  minutesIntoDueDay,
   deadlineFor,
+  dueDateFor,
   formatWeekLabel,
   localParts,
   formatClock,
@@ -31,12 +32,16 @@ import {
   bestStreak,
   getStakes,
   recordStake,
+  dropStake,
   getFlag,
   setFlag,
+  getHolidayCache,
+  setHolidayCache,
   getSubs,
   type Week,
 } from './store.mjs';
 import { sendTo, pushConfigured } from './push.mjs';
+import { ensureCache, resolveHoliday } from '../../lib/holidays.js';
 
 export async function buildState(role: string) {
   const settings = await getSettings();
@@ -48,8 +53,11 @@ export async function buildState(role: string) {
   const weeks = await allWeeks();
   const stakes = await getStakes();
 
-  const hoursLeft = hoursUntilDeadline(weekKey, tz, now);
-  const minutes = minutesIntoFriday(weekKey, tz, now);
+  const cache = await getHolidayCache();
+  const holiday = resolveHoliday({ weekKey, cache, handling: settings.holiday_handling });
+
+  const hoursLeft = hoursUntilDeadline(weekKey, tz, now, holiday.shiftDays);
+  const minutes = minutesIntoDueDay(weekKey, tz, now, holiday.shiftDays);
 
   return {
     role,
@@ -63,12 +71,21 @@ export async function buildState(role: string) {
       onTime: week.on_time === 1,
       nudgeCount: week.nudge_count,
       stage: week.stage,
-      deadline: deadlineFor(weekKey, tz).toISOString(),
+      deadline: deadlineFor(weekKey, tz, holiday.shiftDays).toISOString(),
       hoursLeft,
-      minutesIntoFriday: minutes,
+      minutesIntoDueDay: minutes,
+      dueDate: dueDateFor(weekKey, holiday.shiftDays).iso,
       siegeBeginsAt: SIEGE_BEGINS_AT,
     },
-    pressure: pressureLevel(week, { minutes, hoursLeft }),
+    holiday: {
+      name: holiday.name,
+      shiftDays: holiday.shiftDays,
+      soften: holiday.soften,
+      handling: settings.holiday_handling,
+      country: settings.holiday_country,
+      known: Boolean(cache),
+    },
+    pressure: pressureLevel(week, { minutes, hoursLeft, soften: holiday.soften }),
     streak: currentStreak(weeks),
     best: bestStreak(weeks),
     history: weeks.slice(-12).map((w) => ({
@@ -77,6 +94,7 @@ export async function buildState(role: string) {
       status: w.status,
       onTime: w.on_time === 1,
       nudgeCount: w.nudge_count,
+      holiday: (w as any).holiday_name || null,
     })),
     stakes: {
       enabled: settings.stakes_enabled === '1',
@@ -113,7 +131,12 @@ export async function confirmWeek() {
 
   if (week.status === 'confirmed') return { alreadyConfirmed: true, onTime: week.on_time === 1 };
 
-  const onTime = hoursUntilDeadline(weekKey, tz, now) > 0;
+  const holiday = resolveHoliday({
+    weekKey,
+    cache: await getHolidayCache(),
+    handling: settings.holiday_handling,
+  });
+  const onTime = hoursUntilDeadline(weekKey, tz, now, holiday.shiftDays) > 0;
   await updateWeek(weekKey, (w) => ({
     ...w,
     status: 'confirmed',
@@ -141,9 +164,16 @@ export async function unconfirmWeek() {
   const tz = settings.timezone;
   const now = new Date();
   const weekKey = weekKeyFor(now, tz, Number(settings.grace_days));
+  const holiday = resolveHoliday({
+    weekKey,
+    cache: await getHolidayCache(),
+    handling: settings.holiday_handling,
+  });
   // Undo fixes a mis-tap; it does not buy time. Reopening a week whose
-  // deadline has already passed drops it straight back to missed.
-  const status: Week['status'] = hoursUntilDeadline(weekKey, tz, now) > 0 ? 'pending' : 'missed';
+  // deadline has already passed drops it straight back to missed -- or to
+  // skipped, on a softened holiday week.
+  const overdue = hoursUntilDeadline(weekKey, tz, now, holiday.shiftDays) <= 0;
+  const status: Week['status'] = !overdue ? 'pending' : holiday.soften ? 'skipped' : 'missed';
   await updateWeek(weekKey, (w) => ({ ...w, status, confirmed_at: null, on_time: null }));
 }
 
@@ -230,18 +260,67 @@ export async function runTick(now = new Date()) {
   const settings = await getSettings();
   const cfg = config(settings);
   const weekKey = weekKeyFor(now, cfg.timezone, cfg.graceDays);
-  const week = await ensureWeek(weekKey);
+  let week = await ensureWeek(weekKey);
   await sweepAbandoned(weekKey, settings, now);
 
-  const hoursLeft = hoursUntilDeadline(weekKey, cfg.timezone, now);
-  const minutes = minutesIntoFriday(weekKey, cfg.timezone, now);
+  const cache = await ensureCache({
+    get: getHolidayCache,
+    set: setHolidayCache,
+    country: settings.holiday_country,
+    now: now.getTime(),
+  });
+  const holiday = resolveHoliday({ weekKey, cache, handling: settings.holiday_handling });
+
+  // Record what the holiday meant for this week, so history stays truthful
+  // even if the setting changes later.
+  if (week.holiday_name !== holiday.name || week.due_shift !== holiday.shiftDays) {
+    week =
+      (await updateWeek(weekKey, (w) => ({
+        ...w,
+        holiday_name: holiday.name,
+        due_shift: holiday.shiftDays,
+      }))) ?? week;
+  }
+
+  const hoursLeft = hoursUntilDeadline(weekKey, cfg.timezone, now, holiday.shiftDays);
+  const minutes = minutesIntoDueDay(weekKey, cfg.timezone, now, holiday.shiftDays);
   const localHour = localParts(now, cfg.timezone).hour;
   const minutesSinceNudge = minutesSince(week.last_nudge, now);
 
-  const outcome = decide(week, { minutes, hoursLeft, minutesSinceNudge, localHour, config: cfg });
+  const outcome = decide(week, {
+    minutes,
+    hoursLeft,
+    minutesSinceNudge,
+    localHour,
+    soften: holiday.soften,
+    config: cfg,
+  });
   const url = settings.timesheet_url || '/';
 
   switch (outcome.action) {
+    case 'skip': {
+      // Holiday week ran out of time. Closed without penalty and without a
+      // notification -- nobody needs telling that Christmas happened.
+      //
+      // Deliberately also converts an already-missed week. Holiday data can
+      // arrive after the deadline (a first deploy, a failed fetch), and a week
+      // penalised before the app knew it was a holiday should be corrected,
+      // not left punished for the app's own ignorance.
+      const corrected = await updateWeek(
+        weekKey,
+        (w) => ({
+          ...w,
+          status: 'skipped',
+          on_time: null,
+          streak_lost: null,
+          missed_announced_at: now.toISOString(),
+        }),
+        (w) => w.status !== 'skipped',
+        { createIfMissing: false }
+      );
+      if (corrected) await dropStake(weekKey);
+      break;
+    }
     case 'missed': {
       // Record the miss the moment it happens; announce it at a civil hour.
       const streakLost = currentStreak(await allWeeks());

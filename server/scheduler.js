@@ -1,6 +1,23 @@
-import db, { setting, settingInt, settingBool, ensureWeek, getWeek, logEvent, currentStreak } from './db.js';
+import db, {
+  setting,
+  settingInt,
+  settingBool,
+  ensureWeek,
+  getWeek,
+  logEvent,
+  currentStreak,
+  getHolidayCache,
+  setHolidayCache,
+} from './db.js';
+import { ensureCache, resolveHoliday } from '../lib/holidays.js';
 import { sendTo } from './push.js';
-import { weekKeyFor, hoursUntilDeadline, minutesIntoFriday, formatWeekLabel, localParts } from '../lib/week.js';
+import {
+  weekKeyFor,
+  hoursUntilDeadline,
+  minutesIntoDueDay,
+  formatWeekLabel,
+  localParts,
+} from '../lib/week.js';
 import { decide } from '../lib/escalation.js';
 
 function config() {
@@ -11,6 +28,8 @@ function config() {
     weekendInterval: settingInt('weekend_interval_minutes'),
     quietStart: settingInt('quiet_start_hour'),
     quietEnd: settingInt('quiet_end_hour'),
+    holidayCountry: setting('holiday_country'),
+    holidayHandling: setting('holiday_handling'),
   };
 }
 
@@ -122,16 +141,54 @@ export async function tick(now = new Date()) {
   const weekKey = weekKeyFor(now, cfg.timezone, cfg.graceDays);
   ensureWeek(weekKey);
   sweepAbandoned(weekKey, cfg, now);
+
+  const cache = await ensureCache({
+    get: async () => getHolidayCache(),
+    set: async (c) => setHolidayCache(c),
+    country: cfg.holidayCountry,
+    now: now.getTime(),
+  });
+  const holiday = resolveHoliday({ weekKey, cache, handling: cfg.holidayHandling });
+
+  // Record what the holiday meant for this week, so history stays truthful
+  // even if the setting changes later.
+  db.prepare('UPDATE weeks SET holiday_name = ?, due_shift = ? WHERE week_key = ?').run(
+    holiday.name,
+    holiday.shiftDays,
+    weekKey
+  );
   const week = getWeek(weekKey);
 
-  const hoursLeft = hoursUntilDeadline(weekKey, cfg.timezone, now);
-  const minutes = minutesIntoFriday(weekKey, cfg.timezone, now);
+  const hoursLeft = hoursUntilDeadline(weekKey, cfg.timezone, now, holiday.shiftDays);
+  const minutes = minutesIntoDueDay(weekKey, cfg.timezone, now, holiday.shiftDays);
   const minutesSinceNudge = minutesSince(week.last_nudge, now);
   const localHour = localParts(now, cfg.timezone).hour;
 
-  const outcome = decide(week, { minutes, hoursLeft, minutesSinceNudge, localHour, config: cfg });
+  const outcome = decide(week, {
+    minutes,
+    hoursLeft,
+    minutesSinceNudge,
+    localHour,
+    soften: holiday.soften,
+    config: cfg,
+  });
 
   switch (outcome.action) {
+    case 'skip':
+      // Holiday week ran out of time. Closed without penalty and without a
+      // notification -- nobody needs telling that Christmas happened.
+      //
+      // Deliberately also converts an already-missed week. Holiday data can
+      // arrive after the deadline (a first deploy, a failed fetch), and a week
+      // penalised before the app knew it was a holiday should be corrected,
+      // not left punished for the app's own ignorance.
+      db.prepare(
+        `UPDATE weeks SET status = 'skipped', missed_announced_at = ?, on_time = NULL,
+         streak_lost = NULL WHERE week_key = ? AND status != 'skipped'`
+      ).run(now.toISOString(), weekKey);
+      db.prepare('DELETE FROM stakes WHERE week_key = ?').run(weekKey);
+      logEvent(weekKey, 'skipped', holiday.name || 'holiday');
+      break;
     case 'missed':
       // State only. The announcement waits for the quiet window to lift.
       markMissed(weekKey, now);

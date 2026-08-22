@@ -13,7 +13,7 @@ export type Role = 'owner' | 'partner';
 
 export interface Week {
   week_key: string;
-  status: 'pending' | 'confirmed' | 'missed';
+  status: 'pending' | 'confirmed' | 'missed' | 'skipped';
   confirmed_at: string | null;
   missed_at: string | null;
   on_time: number | null;
@@ -23,6 +23,8 @@ export interface Week {
   fixed_stage: string | null;
   missed_announced_at: string | null;
   streak_lost: number | null;
+  holiday_name: string | null;
+  due_shift: number;
   created_at: string;
 }
 
@@ -130,6 +132,8 @@ function blankWeek(weekKey: string): Week {
     fixed_stage: null,
     missed_announced_at: null,
     streak_lost: null,
+    holiday_name: null,
+    due_shift: 0,
     created_at: new Date().toISOString(),
   };
 }
@@ -182,6 +186,9 @@ export function currentStreak(weeks: Week[]): number {
   const resolved = weeks.filter((w) => w.status !== 'pending').reverse();
   let streak = 0;
   for (const w of resolved) {
+    // A holiday week is neutral: it neither extends the streak nor breaks it,
+    // because she was never asked to do anything.
+    if (w.status === 'skipped') continue;
     if (w.status === 'confirmed' && w.on_time === 1) streak += 1;
     else break;
   }
@@ -192,6 +199,7 @@ export function bestStreak(weeks: Week[]): number {
   let best = 0;
   let run = 0;
   for (const w of weeks.filter((w) => w.status !== 'pending')) {
+    if (w.status === 'skipped') continue;
     if (w.status === 'confirmed' && w.on_time === 1) {
       run += 1;
       best = Math.max(best, run);
@@ -222,6 +230,12 @@ export async function recordStake(weekKey: string, amount: number): Promise<void
     settled_at: null,
     created_at: new Date().toISOString(),
   } satisfies Stake);
+}
+
+// Used when a week turns out to have been a holiday after it was already
+// closed as missed -- the charge should not survive the correction.
+export async function dropStake(weekKey: string): Promise<void> {
+  await store().delete(`stakes/${weekKey}`);
 }
 
 export async function settleStake(weekKey: string, waive: boolean): Promise<void> {
@@ -285,6 +299,16 @@ export async function clearHistory(): Promise<number> {
   await Promise.all(keys.map((k) => s.delete(k)));
   await s.delete('flags/manual_nudge').catch(() => {});
   return keys.length;
+}
+
+// Fetched data, not a preference -- kept out of the settings blob so a bad
+// settings write can never corrupt it and vice versa.
+export async function getHolidayCache(): Promise<any | null> {
+  return (await store().get('holiday-cache', { type: 'json' })) as any | null;
+}
+
+export async function setHolidayCache(cache: unknown): Promise<void> {
+  await store().setJSON('holiday-cache', cache);
 }
 
 export async function getRecord<T>(key: string): Promise<T | null> {

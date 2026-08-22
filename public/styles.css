@@ -414,6 +414,13 @@ details.panel[open] > summary { border-bottom: 1px solid var(--hairline); }
   border-color: color-mix(in srgb, var(--warn) 45%, transparent);
 }
 
+.hbar[data-s='skipped'] {
+  height: 46%;
+  background: var(--surface-2);
+  border-style: dashed;
+  border-color: var(--hairline-2);
+}
+
 .hbar[data-s='missed'] {
   height: 22%;
   background: color-mix(in srgb, var(--bad) 26%, transparent);
@@ -440,6 +447,11 @@ details.panel[open] > summary { border-bottom: 1px solid var(--hairline); }
 }
 
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+.legend i.dashed {
+  background: transparent;
+  border: 1px dashed var(--hairline-2);
+}
 
 .legend i {
   width: 9px;

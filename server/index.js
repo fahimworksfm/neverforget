@@ -18,13 +18,15 @@ import db, {
   stakesLedger,
   outstandingStakes,
   clearHistory,
+  getHolidayCache,
 } from './db.js';
 import { publicKey, saveSubscription, removeSubscription, subscriptionCount, sendTo, pushConfigured } from './push.js';
 import {
   weekKeyFor,
   hoursUntilDeadline,
-  minutesIntoFriday,
+  minutesIntoDueDay,
   deadlineFor,
+  dueDateFor,
   formatWeekLabel,
   formatClock,
 } from '../lib/week.js';
@@ -40,6 +42,7 @@ import {
 import { startScheduler, tick } from './scheduler.js';
 import { COOKIE, issue, verify, roleForCode, requireRole, cookieOptions, codesConfigured } from './auth.js';
 import { validateSettingsPatch } from '../lib/settings.js';
+import { resolveHoliday } from '../lib/holidays.js';
 import { createThrottle } from '../lib/throttle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -68,6 +71,14 @@ app.use(cookieParser());
 
 // ---------------------------------------------------------------- state
 
+function currentHoliday(weekKey) {
+  return resolveHoliday({
+    weekKey,
+    cache: getHolidayCache(),
+    handling: setting('holiday_handling'),
+  });
+}
+
 function buildState() {
   const timezone = setting('timezone');
   const graceDays = Number(setting('grace_days'));
@@ -76,9 +87,10 @@ function buildState() {
   ensureWeek(weekKey);
   const week = getWeek(weekKey);
 
-  const hoursLeft = hoursUntilDeadline(weekKey, timezone, now);
-  const minutes = minutesIntoFriday(weekKey, timezone, now);
-  const pressure = pressureLevel(week, { minutes, hoursLeft });
+  const holiday = currentHoliday(weekKey);
+  const hoursLeft = hoursUntilDeadline(weekKey, timezone, now, holiday.shiftDays);
+  const minutes = minutesIntoDueDay(weekKey, timezone, now, holiday.shiftDays);
+  const pressure = pressureLevel(week, { minutes, hoursLeft, soften: holiday.soften });
 
   return {
     now: now.toISOString(),
@@ -91,10 +103,19 @@ function buildState() {
       onTime: week.on_time === 1,
       nudgeCount: week.nudge_count,
       stage: week.stage,
-      deadline: deadlineFor(weekKey, timezone).toISOString(),
+      deadline: deadlineFor(weekKey, timezone, holiday.shiftDays).toISOString(),
       hoursLeft,
-      minutesIntoFriday: minutes,
+      minutesIntoDueDay: minutes,
+      dueDate: dueDateFor(weekKey, holiday.shiftDays).iso,
       siegeBeginsAt: SIEGE_BEGINS_AT,
+    },
+    holiday: {
+      name: holiday.name,
+      shiftDays: holiday.shiftDays,
+      soften: holiday.soften,
+      handling: setting('holiday_handling'),
+      country: setting('holiday_country'),
+      known: Boolean(getHolidayCache()),
     },
     pressure,
     streak: currentStreak(),
@@ -105,6 +126,7 @@ function buildState() {
       status: w.status,
       onTime: w.on_time === 1,
       nudgeCount: w.nudge_count,
+      holiday: w.holiday_name || null,
     })),
     stakes: {
       enabled: settingBool('stakes_enabled'),
@@ -214,7 +236,7 @@ app.post('/api/confirm', requireRole('owner'), async (req, res) => {
     return res.json({ ok: true, alreadyConfirmed: true, ...buildState() });
   }
 
-  const hoursLeft = hoursUntilDeadline(weekKey, timezone, now);
+  const hoursLeft = hoursUntilDeadline(weekKey, timezone, now, currentHoliday(weekKey).shiftDays);
   const onTime = hoursLeft > 0;
 
   db.prepare(
@@ -247,10 +269,12 @@ app.post('/api/unconfirm', requireRole('owner'), (req, res) => {
   const timezone = setting('timezone');
   const now = new Date();
   const weekKey = weekKeyFor(now, timezone, Number(setting('grace_days')));
-  const hoursLeft = hoursUntilDeadline(weekKey, timezone, now);
+  const holiday = currentHoliday(weekKey);
+  const hoursLeft = hoursUntilDeadline(weekKey, timezone, now, holiday.shiftDays);
   // Reopening a week that is already past its deadline puts it straight back
   // into the missed state -- undo corrects a mis-tap, it does not buy time.
-  const status = hoursLeft > 0 ? 'pending' : 'missed';
+  // On a softened holiday week it returns to skipped, not missed.
+  const status = hoursLeft > 0 ? 'pending' : holiday.soften ? 'skipped' : 'missed';
   db.prepare(
     'UPDATE weeks SET status = ?, confirmed_at = NULL, on_time = NULL WHERE week_key = ?'
   ).run(status, weekKey);
