@@ -75,6 +75,20 @@ Design decisions worth knowing:
 - **Notifications carry the timesheet link.** The gap between "I should do this"
   and doing it is where this fails, so one tap closes it.
 
+### Ambience
+
+The background is a WebGL shader (`public/ambience.js`) that follows the
+pressure level: slow blue-green smoke when there is time, faster and redder
+turbulence as the deadline nears, and a heartbeat from the siege onward.
+Confirming releases it with one ring of light. It is decoration only — without
+WebGL the page falls back to the CSS wash, with reduced motion it renders a
+still frame, and it stops drawing while the app is in the background.
+
+Preview any level with `?mood=0` … `?mood=5`, or `?mood=cycle` to walk through
+all six. To replace the procedural smoke with generated artwork, put one image
+per level in `public/ambient/` and list them in `FRAMES` at the top of
+`ambience.js`; the shader then warps and crossfades those instead.
+
 ## Honest limitations
 
 **The app cannot verify submission.** Deloitte's timesheet system is behind
@@ -204,7 +218,8 @@ netlify/            Netlify target
   lib/store.mts       Blobs-backed state (strong consistency)
   lib/core.mts        buildState / confirm / runTick
 
-public/             PWA: owner app, partner view, service worker
+public/             PWA: owner app, partner view, service worker,
+                    WebGL ambience
 ```
 
 Everything in `lib/` is pure and takes the clock as an argument. That is what

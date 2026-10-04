@@ -144,7 +144,13 @@ function render() {
     $('undoBtn').classList.add('hide');
   }
 
-  drawDial(remainingFraction(week));
+  const fraction = remainingFraction(week);
+  drawDial(fraction);
+  window.ambience?.update({
+    level: pressure.level,
+    urgency: confirmed || skipped ? 0 : 1 - fraction,
+    done: confirmed || skipped,
+  });
 
   const link = $('openSheet');
   link.classList.toggle('hide', !timesheetUrl);

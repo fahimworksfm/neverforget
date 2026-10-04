@@ -77,6 +77,19 @@ body::before {
   z-index: 0;
 }
 
+/* WebGL ambience (ambience.js). When it runs it owns the background and the
+   CSS wash steps aside; when it cannot run, the wash above is the fallback. */
+.ambience {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.has-ambience body::before { display: none; }
+
 .shell {
   position: relative;
   z-index: 1;
