@@ -13,7 +13,7 @@
 
 (() => {
   // e.g. { webm: '/ambient/release.webm', mp4: '/ambient/release.mp4' }
-  const VIDEO = null;
+  const VIDEO = { webm: '/ambient/release.webm', mp4: '/ambient/release.mp4' };
 
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const $ = (id) => document.getElementById(id);
@@ -159,13 +159,22 @@
     setTimeout(() => focus.classList.remove('is-releasing'), 2400);
 
     window.ambience?.release();
-    sparks(dial, accent);
+    window.dial3d?.release();
 
+    // The 3D dial throws its own embers and the clip carries its own sparks;
+    // the 2D sparks are for when neither is there.
+    const has3d = dial.classList.contains('is-3d');
+    const fallback = () => { if (!has3d) sparks(dial, accent); };
     if (video) {
       dial.append(video);
       video.currentTime = 0;
-      video.play().catch(() => video.remove());
+      video.play().catch(() => {
+        video.remove();
+        fallback();
+      });
       video.onended = () => video.remove();
+    } else {
+      fallback();
     }
 
     countUp($('streak'), before.streak, Number($('streak').textContent));

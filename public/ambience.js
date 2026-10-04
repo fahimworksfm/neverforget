@@ -16,7 +16,7 @@
 
 (() => {
   // e.g. ['/ambient/p0.jpg', '/ambient/p1.jpg', ... '/ambient/p5.jpg']
-  const FRAMES = [];
+  const FRAMES = [0, 1, 2, 3, 4, 5].map((i) => `/ambient/p${i}.jpg`);
 
   // Rendered below device resolution: the image is soft by nature, and the
   // fill rate saved is most of what keeps an older phone cool.
@@ -126,10 +126,14 @@
 
       vec3 col;
       if (uUseImg) {
-        vec2 iuv = cover(uv) + (r - 0.5) * mix(0.01, 0.05, heat);
+        // A slow breathing zoom keeps a still from reading as a still; the
+        // smoke field then warps it and moves light across it.
+        float zoom = 1.06 + 0.025 * sin(uTime * 0.06);
+        vec2 iuv = (cover(uv) - 0.5) / zoom + 0.5 + vec2(sin(uTime * 0.031), cos(uTime * 0.023)) * 0.012;
+        iuv += (r - 0.5) * mix(0.012, 0.05, heat);
         iuv.y = 1.0 - iuv.y;
         col = mix(texture2D(uImgA, iuv).rgb, texture2D(uImgB, iuv).rgb, uImgMix);
-        col *= 0.55 + 0.25 * beat;
+        col *= (0.5 + 0.22 * beat) * (0.7 + 0.6 * f);
       } else {
         col = mix(uDeep, uMid, smoothstep(0.2, 0.75, f));
         col = mix(col, uHigh, smoothstep(0.55, 0.95, f * (0.85 + 0.35 * length(q))) * (0.45 + 0.35 * heat));

@@ -19,6 +19,18 @@
   [headers.values]
     Cache-Control = "public, max-age=3600"
 
+# Vendored Three.js and the generated media change rarely and are large
+# enough to be worth caching; a day keeps a replaced asset from sticking.
+[[headers]]
+  for = "/vendor/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/ambient/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
 # Partner view is a real page, not a redirect target.
 [[redirects]]
   from = "/partner"

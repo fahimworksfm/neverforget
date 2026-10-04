@@ -147,6 +147,7 @@ function render() {
   const fraction = remainingFraction(week);
   drawDial(fraction);
   $('dialCheck').classList.toggle('hide', !confirmed);
+  window.dial3d?.update({ fraction, level: pressure.level, done: confirmed || skipped });
   window.ambience?.update({
     level: pressure.level,
     urgency: confirmed || skipped ? 0 : 1 - fraction,
@@ -459,6 +460,9 @@ $('logout').onclick = async (e) => {
   await api('/api/logout', { method: 'POST', body: '{}' });
   showLogin();
 };
+
+// The 3D dial is a module and can finish loading after the first render.
+document.addEventListener('dial3d:ready', render);
 
 // ---------------------------------------------------------------- boot
 

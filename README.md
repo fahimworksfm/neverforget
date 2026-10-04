@@ -85,15 +85,24 @@ WebGL the page falls back to the CSS wash, with reduced motion it renders a
 still frame, and it stops drawing while the app is in the background.
 
 Preview any level with `?mood=0` … `?mood=5`, or `?mood=cycle` to walk through
-all six. To replace the procedural smoke with generated artwork, put one image
-per level in `public/ambient/` and list them in `FRAMES` at the top of
-`ambience.js`; the shader then warps and crossfades those instead.
+all six. The backgrounds are generated stills, one per level, in
+`public/ambient/p0.jpg` … `p5.jpg` (originals in `AiImages/`); the shader
+breathes, warps and crossfades them, and falls back to procedural smoke if
+they fail to load. Empty `FRAMES` in `ambience.js` to use the smoke alone.
+
+The countdown ring is a Three.js object (`public/dial3d.js`): a glowing arc
+that burns down with a hot tip, embers that multiply and shake as pressure
+rises, a lean toward the pointer or (on Android) the phone's tilt, and the
+same heartbeat as the background. The SVG ring stays underneath as the
+fallback. Three.js is vendored as a minified subset in
+`public/vendor/three.min.js`; rebuild it with `scripts/build-three.sh` after
+changing the dial's imports.
 
 Confirming plays a short release (`public/release.js`), and only once the
 server has recorded it: the countdown dissolves into *Done*, the ring flashes
 full and sheds a wave and sparks, the background bursts from the dial, and the
-streak ticks up. A generated clip on a black background can be added over the
-dial by setting `VIDEO` at the top of `release.js`.
+streak ticks up, while a generated burst clip (`public/ambient/release.*`,
+composited with `screen` so its black disappears) plays over the dial.
 
 ## Honest limitations
 
@@ -225,7 +234,9 @@ netlify/            Netlify target
   lib/core.mts        buildState / confirm / runTick
 
 public/             PWA: owner app, partner view, service worker,
-                    WebGL ambience
+                    WebGL ambience, Three.js dial, release animation
+  ambient/          Generated backgrounds and the release clip
+  vendor/           Three.js subset (scripts/build-three.sh)
 ```
 
 Everything in `lib/` is pure and takes the clock as an argument. That is what
