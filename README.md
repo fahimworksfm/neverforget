@@ -89,6 +89,12 @@ all six. To replace the procedural smoke with generated artwork, put one image
 per level in `public/ambient/` and list them in `FRAMES` at the top of
 `ambience.js`; the shader then warps and crossfades those instead.
 
+Confirming plays a short release (`public/release.js`), and only once the
+server has recorded it: the countdown dissolves into *Done*, the ring flashes
+full and sheds a wave and sparks, the background bursts from the dial, and the
+streak ticks up. A generated clip on a black background can be added over the
+dial by setting `VIDEO` at the top of `release.js`.
+
 ## Honest limitations
 
 **The app cannot verify submission.** Deloitte's timesheet system is behind

@@ -56,8 +56,12 @@
       <svg viewBox="0 0 200 200" aria-hidden="true">
         <circle class="dial-track" cx="100" cy="100" r="92"></circle>
         <circle id="dialFill" class="dial-fill" cx="100" cy="100" r="92"></circle>
+        <circle class="dial-wave" cx="100" cy="100" r="92"></circle>
       </svg>
       <div class="dial-inner">
+        <svg id="dialCheck" class="dial-check hide" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"></path>
+        </svg>
         <div class="dial-label" id="heroLabel">Time left</div>
         <div class="dial-value" id="countdown">—</div>
         <div class="dial-note" id="heroSub">—</div>
@@ -188,6 +192,7 @@
 </div>
 
 <script src="/ambience.js"></script>
+<script src="/release.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

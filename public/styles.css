@@ -166,7 +166,7 @@ body[data-pressure='5'] .status::before { animation: blink 1.6s ease-in-out infi
   place-items: center;
 }
 
-.dial svg {
+.dial > svg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -230,6 +230,111 @@ body[data-pressure='5'] .status::before { animation: blink 1.6s ease-in-out infi
   line-height: 1.45;
   color: var(--ink-dim);
   text-wrap: balance;
+}
+
+/* Persistent tick once the week is done; drawn in by the release below. */
+.dial-check {
+  display: block;
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 8px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 60%, transparent));
+}
+
+.dial-wave {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 0;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* ----------------------------------------------------------------- release
+   Played once by release.js after a confirm lands: the ring sweeps full and
+   flashes, a wave leaves it, the old countdown dissolves while "Done" rises
+   through it, and the streak ticks up. Roughly two seconds, start to settle. */
+
+.is-releasing .dial { animation: dial-pop 0.8s cubic-bezier(0.3, 0, 0.2, 1.4); }
+.is-releasing .dial-fill { animation: ring-flash 1.2s ease-out; }
+.is-releasing .dial-wave { animation: ring-wave 1.1s cubic-bezier(0.1, 0.6, 0.3, 1) 0.15s; }
+.is-releasing .dial-check path {
+  animation: check-draw 0.5s cubic-bezier(0.6, 0, 0.3, 1) 0.45s both;
+}
+.is-releasing .dial-check { animation: rise 0.5s ease-out 0.35s both; }
+.is-releasing .dial-value:not(.dial-ghost) { animation: rise 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) 0.25s both; }
+.is-releasing .dial-label,
+.is-releasing .dial-note { animation: fade-in 0.6s ease 0.55s both; }
+.is-releasing + .actions { animation: fade-in 0.6s ease 1s both; }
+
+.dial-ghost {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  animation: dissolve 0.5s ease-in forwards;
+}
+
+.release-sparks {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.release-video {
+  position: absolute;
+  inset: -30%;
+  width: 160%;
+  height: 160%;
+  object-fit: contain;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.metric-n.is-pop { animation: pop 0.6s cubic-bezier(0.3, 0, 0.2, 1.5) 0.55s; }
+
+@keyframes dial-pop {
+  0% { transform: scale(1); }
+  30% { transform: scale(0.95); }
+  65% { transform: scale(1.035); }
+  100% { transform: scale(1); }
+}
+
+@keyframes ring-flash {
+  0%, 100% { stroke-width: 5; }
+  25% {
+    stroke-width: 11;
+    filter: drop-shadow(0 0 26px var(--accent)) brightness(1.6);
+  }
+}
+
+@keyframes ring-wave {
+  0% { opacity: 0.9; stroke-width: 6; transform: scale(1); }
+  100% { opacity: 0; stroke-width: 0.5; transform: scale(1.7); }
+}
+
+@keyframes check-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+@keyframes dissolve {
+  to { opacity: 0; transform: scale(1.18); filter: blur(10px); }
+}
+
+@keyframes fade-in { from { opacity: 0; } }
+
+@keyframes pop {
+  45% { transform: scale(1.4); color: var(--accent); }
 }
 
 body[data-pressure='4'] .dial-value,

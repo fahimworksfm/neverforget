@@ -55,6 +55,7 @@
     uniform float uHeat;     // 0..5, smoothed pressure level
     uniform float uUrgency;  // 0..1, how much of the due day has gone
     uniform float uBurst;    // 1 -> 0 after confirming
+    uniform vec2  uOrigin;   // where the burst starts, in uv
     uniform vec3  uDeep;
     uniform vec3  uMid;
     uniform vec3  uHigh;
@@ -144,7 +145,7 @@
 
       // Release: one ring of the highlight colour sweeping out from the dial.
       if (uBurst > 0.0) {
-        float d = length((uv - vec2(0.5, 0.72)) * vec2(uRes.x / uRes.y, 1.0));
+        float d = length((uv - uOrigin) * vec2(uRes.x / uRes.y, 1.0));
         float radius = (1.0 - uBurst) * 1.6;
         float ring = exp(-pow((d - radius) * 7.0, 2.0)) * uBurst;
         col += uHigh * ring * 0.6 + uHigh * uBurst * uBurst * 0.12;
@@ -221,7 +222,7 @@
   gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
   const U = {};
-  for (const name of ['uRes', 'uTime', 'uHeat', 'uUrgency', 'uBurst', 'uDeep', 'uMid',
+  for (const name of ['uRes', 'uTime', 'uHeat', 'uUrgency', 'uBurst', 'uOrigin', 'uDeep', 'uMid',
     'uHigh', 'uUseImg', 'uImgA', 'uImgB', 'uImgMix', 'uImgAspect']) {
     U[name] = gl.getUniformLocation(prog, name);
   }
@@ -279,6 +280,7 @@
   let palette = PALETTES[target].map((rgb) => rgb.slice());
   let urgency = 0;
   let burst = 0;
+  let origin = [0.5, 0.72];
   let resolved = null;
   let start = performance.now();
   let last = start;
@@ -315,6 +317,7 @@
     gl.uniform1f(U.uHeat, heat);
     gl.uniform1f(U.uUrgency, urgency);
     gl.uniform1f(U.uBurst, reducedMotion.matches ? 0 : burst);
+    gl.uniform2fv(U.uOrigin, origin);
     gl.uniform3fv(U.uDeep, deep);
     gl.uniform3fv(U.uMid, mid);
     gl.uniform3fv(U.uHigh, high);
@@ -366,8 +369,20 @@
     update({ level, urgency: u = 0, done = false }) {
       if (pinned === null && !cycling) target = level;
       urgency = u;
-      if (resolved === false && done) burst = 1;
+      if (resolved === false && done) this.release();
       resolved = done;
+      requestFrame();
+    },
+
+    // One ring of light from the dial. Fired by the transition to done, and
+    // callable directly so the submit animation can line up with it.
+    release() {
+      const dial = document.querySelector('.dial');
+      const r = dial?.getBoundingClientRect();
+      origin = r && r.width
+        ? [(r.left + r.width / 2) / innerWidth, 1 - (r.top + r.height / 2) / innerHeight]
+        : [0.5, 0.72];
+      burst = 1;
       requestFrame();
     },
   };

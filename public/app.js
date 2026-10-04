@@ -146,6 +146,7 @@ function render() {
 
   const fraction = remainingFraction(week);
   drawDial(fraction);
+  $('dialCheck').classList.toggle('hide', !confirmed);
   window.ambience?.update({
     level: pressure.level,
     urgency: confirmed || skipped ? 0 : 1 - fraction,
@@ -368,9 +369,11 @@ $('code').addEventListener('keydown', (e) => {
 
 $('confirmBtn').onclick = async () => {
   $('confirmBtn').disabled = true;
+  const before = { text: $('countdown').textContent, streak: Number($('streak').textContent) };
   try {
     state = await api('/api/confirm', { method: 'POST', body: '{}' });
     render();
+    window.release?.play(before);
   } catch (e) {
     // A confirm she believes landed but did not is the single worst failure
     // this app can have: the reminders stop in her head, not on the server.
