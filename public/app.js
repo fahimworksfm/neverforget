@@ -439,6 +439,8 @@ $('saveBtn').onclick = async () => {
         stakes_enabled: $('stakesOn').value,
         stakes_amount: $('amount').value,
         stakes_recipient: $('recipient').value.trim(),
+        holiday_handling: $('holidayHandling').value,
+        holiday_country: $('holidayCountry').value.trim().toUpperCase(),
       }),
     });
     // Only drop the dirty flag once the values are actually stored. Clearing
