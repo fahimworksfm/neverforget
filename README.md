@@ -75,34 +75,25 @@ Design decisions worth knowing:
 - **Notifications carry the timesheet link.** The gap between "I should do this"
   and doing it is where this fails, so one tap closes it.
 
-### Ambience
+### Look
 
-The background is a WebGL shader (`public/ambience.js`) that follows the
-pressure level: slow blue-green smoke when there is time, faster and redder
-turbulence as the deadline nears, and a heartbeat from the siege onward.
-Confirming releases it with one ring of light. It is decoration only — without
-WebGL the page falls back to the CSS wash, with reduced motion it renders a
-still frame, and it stops drawing while the app is in the background.
+The app is a poster: a flat field of colour with one enormous number on it
+(`public/styles.css`). The colour is the pressure level — pale blue while there
+is time, yellow from midday, orange from 4 PM, solid red in the siege,
+near-black once the week is missed, and mint when it is done or a holiday.
+The layout never moves; only the ground, the number and the size of the button
+change. The headline type is Anton, self-hosted in `public/fonts/` (SIL Open
+Font License) so the app makes no third-party requests.
 
-Preview any level with `?mood=0` … `?mood=5`, or `?mood=cycle` to walk through
-all six. The backgrounds are generated stills, one per level, in
-`public/ambient/p0.jpg` … `p5.jpg` (originals in `AiImages/`); the shader
-breathes, warps and crossfades them, and falls back to procedural smoke if
-they fail to load. Empty `FRAMES` in `ambience.js` to use the smoke alone.
-
-The countdown ring is a Three.js object (`public/dial3d.js`): a glowing arc
-that burns down with a hot tip, embers that multiply and shake as pressure
-rises, a lean toward the pointer or (on Android) the phone's tilt, and the
-same heartbeat as the background. The SVG ring stays underneath as the
-fallback. Three.js is vendored as a minified subset in
-`public/vendor/three.min.js`; rebuild it with `scripts/build-three.sh` after
-changing the dial's imports.
+Preview any colour with `?mood=0` … `?mood=5`, or `?mood=done`.
 
 Confirming plays a short release (`public/release.js`), and only once the
-server has recorded it: the countdown dissolves into *Done*, the ring flashes
-full and sheds a wave and sparks, the background bursts from the dial, and the
-streak ticks up, while a generated burst clip (`public/ambient/release.*`,
-composited with `screen` so its black disappears) plays over the dial.
+server has recorded it: the screen turns mint, *Done.* lands like a stamp, and
+the streak ticks up. With reduced motion it simply changes.
+
+The earlier WebGL background and Three.js dial (`public/ambience.js`,
+`public/dial3d.js`, `public/vendor/`, `public/ambient/`) are no longer loaded
+by either page.
 
 ## Honest limitations
 

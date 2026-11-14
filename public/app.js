@@ -74,22 +74,31 @@ function formatCountdown(hours) {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// Fraction of Friday still available, 0..1. Drives the arc.
-function remainingFraction(week) {
-  // A skipped holiday week is resolved, not failed -- show a full ring rather
-  // than the empty one that reads as "you ran out of time".
-  if (week.status === 'confirmed' || week.status === 'skipped') return 1;
-  if (week.hoursLeft <= 0) return 0;
-  if (week.minutesIntoDueDay < 0) return 1;
-  return Math.max(0, Math.min(1, 1 - week.minutesIntoDueDay / 1440));
+// The poster number: one unit, as large as the screen allows. The precise
+// h:mm:ss lives in the small line under it.
+function bigCountdown(hours) {
+  const mins = Math.max(0, Math.ceil(hours * 60));
+  if (hours >= 48) {
+    const d = Math.floor(hours / 24);
+    return [String(d), 'Days left'];
+  }
+  if (mins >= 60) {
+    const h = Math.floor(mins / 60);
+    return [String(h), h === 1 ? 'Hour left' : 'Hours left'];
+  }
+  return [String(mins), mins === 1 ? 'Minute.' : 'Minutes.'];
 }
 
-function drawDial(fraction) {
-  const el = $('dialFill');
-  const r = Number(el.getAttribute('r'));
-  const c = 2 * Math.PI * r;
-  el.style.strokeDasharray = String(c);
-  el.style.strokeDashoffset = String(c * (1 - fraction));
+// ?mood=0..5 or ?mood=done previews a colour without waiting for Friday.
+const MOOD = new URLSearchParams(location.search).get('mood');
+
+function setHero(big, unit, line, kind) {
+  const el = $('bigNum');
+  el.textContent = big;
+  el.classList.toggle('is-word', kind === 'word');
+  el.classList.toggle('is-long', kind === 'long');
+  $('bigUnit').textContent = unit;
+  $('heroLine').textContent = line;
 }
 
 function renderHistory(history) {
@@ -109,50 +118,59 @@ function render() {
   if (!state) return;
   const { week, pressure, streak, best, stakes, timesheetUrl } = state;
 
-  document.body.dataset.pressure = String(pressure.level);
-  $('pressurePill').textContent = pressure.label;
-
   const confirmed = week.status === 'confirmed';
   const skipped = week.status === 'skipped';
   const overdue = week.hoursLeft <= 0;
-  const value = $('countdown');
+
+  // The ground colour is the pressure; a resolved week overrides the clock.
+  let level = String(pressure.level);
+  let mode = confirmed ? 'done' : skipped ? 'holiday' : overdue ? 'over' : 'open';
+  if (MOOD === 'done') mode = 'done';
+  else if (MOOD !== null && /^[0-5]$/.test(MOOD)) {
+    level = MOOD;
+    if (mode !== 'open' && mode !== 'over') mode = 'open';
+  }
+  document.body.dataset.pressure = level;
+  document.body.dataset.state = mode;
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', getComputedStyle(document.body).getPropertyValue('--bg').trim());
+  $('pressurePill').textContent = pressure.label;
+
+  $('countdown').textContent = formatCountdown(week.hoursLeft);
+  $('heroClock').classList.toggle('is-idle', confirmed || skipped);
 
   if (skipped) {
-    $('heroLabel').textContent = 'This week';
-    value.textContent = 'Holiday';
-    value.classList.add('is-word');
+    setHero('Holiday', '', '', 'long');
     $('heroSub').textContent = `${week.label} was a holiday. Nothing owed, streak untouched.`;
     $('confirmBtn').classList.remove('hide');
     $('undoBtn').classList.add('hide');
   } else if (confirmed) {
-    $('heroLabel').textContent = 'This week';
-    value.textContent = 'Done';
-    value.classList.add('is-word');
+    setHero('Done.', '', '', 'word');
     $('heroSub').textContent = week.onTime
       ? `${week.label} submitted on time. Nothing until next Friday.`
       : `${week.label} submitted late — but submitted.`;
     $('confirmBtn').classList.add('hide');
     $('undoBtn').classList.remove('hide');
+  } else if (overdue) {
+    setHero(
+      'Missed.',
+      '',
+      week.status === 'missed' ? 'Streak reset to zero.' : 'Still has to be done.',
+      'long'
+    );
+    $('heroLabel').textContent = 'Overdue by';
+    $('heroSub').textContent = `${week.label} closed unsubmitted. It still has to be done.`;
+    $('confirmBtn').classList.remove('hide');
+    $('undoBtn').classList.add('hide');
   } else {
-    value.classList.toggle('is-word', false);
-    $('heroLabel').textContent = overdue ? 'Overdue by' : 'Time left to submit';
-    value.textContent = formatCountdown(week.hoursLeft);
-    $('heroSub').textContent = overdue
-      ? `${week.label} closed unsubmitted. Still has to be done.`
-      : `Due before Saturday · ${week.label}`;
+    const [big, unit] = bigCountdown(week.hoursLeft);
+    setHero(big, unit, pressure.level >= 4 ? 'Politeness is over.' : '', 'number');
+    $('heroLabel').textContent = 'Time left';
+    $('heroSub').textContent = `Due before Saturday · ${week.label}`;
     $('confirmBtn').classList.remove('hide');
     $('undoBtn').classList.add('hide');
   }
-
-  const fraction = remainingFraction(week);
-  drawDial(fraction);
-  $('dialCheck').classList.toggle('hide', !confirmed);
-  window.dial3d?.update({ fraction, level: pressure.level, done: confirmed || skipped });
-  window.ambience?.update({
-    level: pressure.level,
-    urgency: confirmed || skipped ? 0 : 1 - fraction,
-    done: confirmed || skipped,
-  });
 
   const link = $('openSheet');
   link.classList.toggle('hide', !timesheetUrl);
@@ -370,7 +388,7 @@ $('code').addEventListener('keydown', (e) => {
 
 $('confirmBtn').onclick = async () => {
   $('confirmBtn').disabled = true;
-  const before = { text: $('countdown').textContent, streak: Number($('streak').textContent) };
+  const before = { streak: Number($('streak').textContent) };
   try {
     state = await api('/api/confirm', { method: 'POST', body: '{}' });
     render();
@@ -460,9 +478,6 @@ $('logout').onclick = async (e) => {
   await api('/api/logout', { method: 'POST', body: '{}' });
   showLogin();
 };
-
-// The 3D dial is a module and can finish loading after the first render.
-document.addEventListener('dial3d:ready', render);
 
 // ---------------------------------------------------------------- boot
 

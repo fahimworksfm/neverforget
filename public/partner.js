@@ -43,46 +43,40 @@ function startLive() {
   poller = setInterval(() => refresh().catch(() => {}), 60_000);
 }
 
-// Fraction of Friday still available, 0..1. Drives the arc.
-function remainingFraction(week) {
-  // A skipped holiday week is resolved, not failed -- show a full ring rather
-  // than the empty one that reads as "you ran out of time".
-  if (week.status === 'confirmed' || week.status === 'skipped') return 1;
-  if (week.hoursLeft <= 0) return 0;
-  if (week.minutesIntoDueDay < 0) return 1;
-  return Math.max(0, Math.min(1, 1 - week.minutesIntoDueDay / 1440));
-}
-
-function drawDial(fraction) {
-  const el = $('dialFill');
-  const r = Number(el.getAttribute('r'));
-  const c = 2 * Math.PI * r;
-  el.style.strokeDasharray = String(c);
-  el.style.strokeDashoffset = String(c * (1 - fraction));
-}
-
 function render() {
   const { week, pressure, streak, best, stakes, names } = state;
-  document.body.dataset.pressure = String(pressure.level);
-  $('pressurePill').textContent = pressure.label;
-
   const owner = names.owner;
+  const big = $('status');
+  let mode = 'open';
   if (week.status === 'confirmed') {
-    $('status').textContent = 'Submitted';
+    mode = 'done';
+    big.textContent = 'Done.';
     $('heroSub').textContent = week.onTime
       ? `${owner} submitted ${week.label} on time.`
       : `${owner} submitted ${week.label}, late.`;
+  } else if (week.status === 'skipped') {
+    mode = 'holiday';
+    big.textContent = 'Holiday';
+    $('heroSub').textContent = `${week.label} was a holiday. Nothing owed.`;
   } else if (week.hoursLeft <= 0) {
-    $('status').textContent = 'Missed';
+    mode = 'over';
+    big.textContent = 'Missed.';
     $('heroSub').textContent = `${week.label} closed unsubmitted.`;
   } else {
     const h = Math.floor(week.hoursLeft);
-    $('status').textContent = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h left`;
-    $('heroSub').textContent = `${owner} has not submitted ${week.label} yet.`;
+    const left = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h`;
+    big.textContent = 'Not yet.';
+    $('heroSub').textContent = `${owner} has not submitted ${week.label} yet. ${left} left.`;
   }
-  drawDial(remainingFraction(week));
+  big.classList.toggle('is-long', big.textContent.length > 5);
+  document.body.dataset.pressure = String(pressure.level);
+  document.body.dataset.state = mode;
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', getComputedStyle(document.body).getPropertyValue('--bg').trim());
+  $('pressurePill').textContent = pressure.label;
 
-  $('nudgeBtn').classList.toggle('hide', week.status === 'confirmed');
+  $('nudgeBtn').classList.toggle('hide', mode === 'done' || mode === 'holiday');
   $('streak').textContent = streak;
   $('best').textContent = best;
   $('nudges').textContent = week.nudgeCount;

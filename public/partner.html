@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#08090c">
+<meta name="theme-color" content="#dce8ff">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Never Forget">
@@ -15,17 +15,20 @@
 <body data-pressure="1">
 
 <div id="login" class="login hide">
-  <div class="login-mark">!</div>
+  <div class="login-mark" aria-hidden="true">!</div>
   <h1>Never Forget</h1>
-  <p>Enter your access code.</p>
+  <p>Partner view. Enter your access code.</p>
+  <div class="login-form">
+  <label for="code">Access code</label>
   <div class="login-row">
     <input id="code" type="password" inputmode="text" autocomplete="off"
            autocapitalize="none" autocorrect="off" spellcheck="false"
            placeholder="Access code">
     <button id="reveal" class="btn btn-ghost" type="button">Show</button>
   </div>
-  <div id="loginError" class="notice notice-bad hide" style="margin-top:12px"></div>
-  <button id="loginBtn" class="btn btn-primary" style="margin-top:12px">Enter</button>
+  <div id="loginError" class="notice notice-bad hide"></div>
+  <button id="loginBtn" class="btn btn-primary">Enter</button>
+  </div>
 </div>
 
 <div id="app" class="shell hide">
@@ -40,18 +43,9 @@
     Tap <b>Share → Add to Home Screen</b>.
   </div>
 
-  <section class="focus">
-    <div class="dial">
-      <svg viewBox="0 0 200 200" aria-hidden="true">
-        <circle class="dial-track" cx="100" cy="100" r="92"></circle>
-        <circle id="dialFill" class="dial-fill" cx="100" cy="100" r="92"></circle>
-      </svg>
-      <div class="dial-inner">
-        <div class="dial-label" id="heroLabel">This week</div>
-        <div class="dial-value is-word" id="status">—</div>
-        <div class="dial-note" id="heroSub">—</div>
-      </div>
-    </div>
+  <section class="hero">
+    <div class="hero-big is-word" id="status">—</div>
+    <p class="hero-sub" id="heroSub">—</p>
   </section>
 
   <div class="actions">
@@ -69,11 +63,7 @@
     <h2 class="panel-title">Last 12 weeks</h2>
     <div class="history" id="weeks"></div>
     <div class="history-axis"><span id="histFrom">—</span><span id="histTo">—</span></div>
-    <div class="legend">
-      <span><i style="background:#34d399"></i>On time</span>
-      <span><i style="background:#fbbf24"></i>Late</span>
-      <span><i style="background:#f87171"></i>Missed</span>
-    </div>
+    <div class="legend">A solid block is a week submitted on time.</div>
   </section>
 
   <section class="panel hide" id="stakesCard">

@@ -1,115 +1,17 @@
 /* ==========================================================================
    Release
    The moment the timesheet is confirmed. Everything else in the app pushes;
-   this is the one place it gives something back, so the tap that ends the
-   week should feel like letting go of something rather than ticking a box.
+   this is the one place it gives something back: the screen turns from
+   whatever colour the pressure had reached to mint, "Done." lands like a
+   stamp, and the streak ticks up.
 
    Plays only after the server has recorded the confirm -- celebrating a
    confirm that did not land would be worse than no animation at all.
-
-   Optional: a generated clip played over the dial. Render it on pure black;
-   it is composited with `screen`, so black disappears and only light shows.
    ========================================================================== */
 
 (() => {
-  // e.g. { webm: '/ambient/release.webm', mp4: '/ambient/release.mp4' }
-  const VIDEO = { webm: '/ambient/release.webm', mp4: '/ambient/release.mp4' };
-
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const $ = (id) => document.getElementById(id);
-
-  let video = null;
-  if (VIDEO) {
-    video = document.createElement('video');
-    video.className = 'release-video';
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
-    video.setAttribute('aria-hidden', 'true');
-    for (const [type, src] of Object.entries(VIDEO)) {
-      if (!src) continue;
-      const source = document.createElement('source');
-      source.src = src;
-      source.type = `video/${type}`;
-      video.append(source);
-    }
-  }
-
-  // ------------------------------------------------------------ sparks
-
-  function sparks(dial, color) {
-    const box = dial.getBoundingClientRect();
-    const pad = box.width * 0.6;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-
-    const canvas = document.createElement('canvas');
-    canvas.className = 'release-sparks';
-    canvas.setAttribute('aria-hidden', 'true');
-    const w = box.width + pad * 2;
-    Object.assign(canvas.style, { left: `${-pad}px`, top: `${-pad}px`, width: `${w}px`, height: `${w}px` });
-    canvas.width = w * dpr;
-    canvas.height = w * dpr;
-    dial.append(canvas);
-
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-
-    // Born on the ring itself (r = 92 of the 200-unit viewBox) and thrown
-    // outward with a little spin, as if the ring shed them.
-    const c = w / 2;
-    const ring = box.width * 0.46;
-    const parts = Array.from({ length: 56 }, () => {
-      const a = Math.random() * Math.PI * 2;
-      const v = 90 + Math.random() * 260;
-      const spin = (Math.random() - 0.5) * 80;
-      return {
-        x: c + Math.cos(a) * ring,
-        y: c + Math.sin(a) * ring,
-        vx: Math.cos(a) * v - Math.sin(a) * spin,
-        vy: Math.sin(a) * v + Math.cos(a) * spin,
-        life: 0.7 + Math.random() * 0.7,
-        size: 0.8 + Math.random() * 1.8,
-        white: Math.random() < 0.3,
-      };
-    });
-
-    let last = performance.now();
-    let age = 0;
-    (function frame(now) {
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      age += dt;
-      ctx.clearRect(0, 0, w, w);
-
-      let alive = 0;
-      for (const p of parts) {
-        const t = age / p.life;
-        if (t >= 1) continue;
-        alive++;
-        const px = p.x;
-        const py = p.y;
-        const drag = Math.exp(-dt * 2.6);
-        p.vx *= drag;
-        p.vy *= drag;
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        ctx.globalAlpha = (1 - t) * (1 - t);
-        ctx.strokeStyle = p.white ? '#ffffff' : color;
-        ctx.lineWidth = p.size * (1 - t * 0.5);
-        ctx.beginPath();
-        ctx.moveTo(px - p.vx * 0.03, py - p.vy * 0.03);
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-      }
-
-      if (alive) requestAnimationFrame(frame);
-      else canvas.remove();
-    })(last);
-  }
-
-  // ------------------------------------------------------------- count
 
   function countUp(el, from, to) {
     if (!(to > from)) return;
@@ -126,56 +28,19 @@
     el.classList.add('is-pop');
   }
 
-  // -------------------------------------------------------------- play
-
-  // before: { text, streak } captured from the screen just before the confirm
-  // re-rendered it. The countdown being replaced is drawn as a ghost that
-  // dissolves while "Done" rises through it.
+  // before: { streak } captured from the screen just before the confirm
+  // re-rendered it.
   function play(before = {}) {
-    const focus = document.querySelector('.focus');
-    const dial = document.querySelector('.dial');
-    if (!focus || !dial) return;
+    const hero = document.querySelector('.hero');
+    if (!hero) return;
 
     navigator.vibrate?.([14, 70, 28]);
-
     if (reducedMotion.matches) return;
 
-    const accent = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#34d399';
-
-    if (before.text) {
-      const value = $('countdown');
-      const ghost = document.createElement('div');
-      ghost.className = 'dial-value dial-ghost';
-      ghost.setAttribute('aria-hidden', 'true');
-      ghost.textContent = before.text;
-      ghost.style.top = `${value.offsetTop}px`;
-      value.parentElement.append(ghost);
-      ghost.addEventListener('animationend', () => ghost.remove(), { once: true });
-    }
-
-    focus.classList.remove('is-releasing');
-    void focus.offsetWidth;
-    focus.classList.add('is-releasing');
-    setTimeout(() => focus.classList.remove('is-releasing'), 2400);
-
-    window.ambience?.release();
-    window.dial3d?.release();
-
-    // The 3D dial throws its own embers and the clip carries its own sparks;
-    // the 2D sparks are for when neither is there.
-    const has3d = dial.classList.contains('is-3d');
-    const fallback = () => { if (!has3d) sparks(dial, accent); };
-    if (video) {
-      dial.append(video);
-      video.currentTime = 0;
-      video.play().catch(() => {
-        video.remove();
-        fallback();
-      });
-      video.onended = () => video.remove();
-    } else {
-      fallback();
-    }
+    hero.classList.remove('is-releasing');
+    void hero.offsetWidth;
+    hero.classList.add('is-releasing');
+    setTimeout(() => hero.classList.remove('is-releasing'), 900);
 
     countUp($('streak'), before.streak, Number($('streak').textContent));
   }

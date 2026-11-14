@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#08090c">
+<meta name="theme-color" content="#dce8ff">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Never Forget">
@@ -16,9 +16,11 @@
 
 <!-- ------------------------------------------------------------- login -->
 <div id="login" class="login hide">
-  <div class="login-mark">!</div>
+  <div class="login-mark" aria-hidden="true">!</div>
   <h1>Never Forget</h1>
-  <p>Enter your access code.</p>
+  <p>One timesheet, every Friday, before midnight.</p>
+  <div class="login-form">
+  <label for="code">Access code</label>
   <div class="login-row">
     <!-- autocomplete off deliberately: a password manager filling a saved
          credential here is indistinguishable from a wrong code being typed. -->
@@ -27,8 +29,9 @@
            placeholder="Access code">
     <button id="reveal" class="btn btn-ghost" type="button">Show</button>
   </div>
-  <div id="loginError" class="notice notice-bad hide" style="margin-top:12px"></div>
-  <button id="loginBtn" class="btn btn-primary" style="margin-top:12px">Enter</button>
+  <div id="loginError" class="notice notice-bad hide"></div>
+  <button id="loginBtn" class="btn btn-primary">Enter</button>
+  </div>
 </div>
 
 <!-- --------------------------------------------------------------- app -->
@@ -51,22 +54,12 @@
 
   <div id="holidayBanner" class="notice notice-info hide"></div>
 
-  <section class="focus">
-    <div class="dial">
-      <svg viewBox="0 0 200 200" aria-hidden="true">
-        <circle class="dial-track" cx="100" cy="100" r="92"></circle>
-        <circle id="dialFill" class="dial-fill" cx="100" cy="100" r="92"></circle>
-        <circle class="dial-wave" cx="100" cy="100" r="92"></circle>
-      </svg>
-      <div class="dial-inner">
-        <svg id="dialCheck" class="dial-check hide" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"></path>
-        </svg>
-        <div class="dial-label" id="heroLabel">Time left</div>
-        <div class="dial-value" id="countdown">—</div>
-        <div class="dial-note" id="heroSub">—</div>
-      </div>
-    </div>
+  <section class="hero">
+    <div class="hero-big" id="bigNum">—</div>
+    <div class="hero-unit" id="bigUnit"></div>
+    <div class="hero-line" id="heroLine"></div>
+    <p class="hero-sub" id="heroSub">—</p>
+    <div class="hero-clock" id="heroClock"><span id="heroLabel">Time left</span> <span id="countdown">—</span></div>
   </section>
 
   <div class="actions">
@@ -85,12 +78,7 @@
     <h2 class="panel-title">Last 12 weeks</h2>
     <div class="history" id="weeks"></div>
     <div class="history-axis"><span id="histFrom">—</span><span id="histTo">—</span></div>
-    <div class="legend">
-      <span><i style="background:#34d399"></i>On time</span>
-      <span><i style="background:#fbbf24"></i>Late</span>
-      <span><i style="background:#f87171"></i>Missed</span>
-      <span><i class="dashed"></i>Holiday</span>
-    </div>
+    <div class="legend">A solid block is a week submitted on time.</div>
   </section>
 
   <section class="panel hide" id="stakesCard">
@@ -132,7 +120,7 @@
         this once before handing the app over, so no streak is built out of
         test runs.
       </p>
-      <button id="resetBtn" class="btn btn-quiet">Reset history</button>
+      <button id="resetBtn" class="btn btn-danger">Reset history</button>
     </div>
   </details>
 
@@ -191,9 +179,7 @@
   <div class="foot"><a href="#" id="logout">Sign out</a></div>
 </div>
 
-<script src="/ambience.js"></script>
 <script src="/release.js"></script>
 <script src="/app.js"></script>
-<script type="module" src="/dial3d.js"></script>
 </body>
 </html>
