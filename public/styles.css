@@ -24,6 +24,8 @@
   --late-ink: #2a1f00;
   --miss: #c81e12;
   --miss-ink: #ffffff;
+  --ok: #0e7a48;
+  --ok-ink: #ffffff;
 }
 
 /* The ground. --ink is everything drawn on it; --loud is the headline colour
@@ -310,7 +312,7 @@ details.panel[open] > summary::after { content: '–'; }
 
 .panel-body { padding: 6px 0 8px; }
 
-/* Twelve weeks, six to a row. A solid block is a week done on time; anything
+/* Twelve weeks, six to a row. A green tick is a week done on time; anything
    else says what it is in words, so nothing depends on telling colours apart. */
 .history {
   display: grid;
@@ -327,7 +329,16 @@ details.panel[open] > summary::after { content: '–'; }
   font-size: 17px;
   line-height: 1;
 }
-.hbar[data-s='ontime'] { background: var(--ink); }
+.hbar[data-s='ontime'] { background: var(--ok); }
+.hbar[data-s='ontime']::after {
+  content: '';
+  width: 10px;
+  height: 20px;
+  margin-top: -5px;
+  border: solid var(--ok-ink);
+  border-width: 0 5px 5px 0;
+  transform: rotate(45deg);
+}
 .hbar[data-s='late'] { background: var(--late); color: var(--late-ink); }
 .hbar[data-s='late']::after { content: 'LATE'; }
 .hbar[data-s='missed'] { background: var(--miss); color: var(--miss-ink); }
