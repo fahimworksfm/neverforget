@@ -19,17 +19,11 @@
   [headers.values]
     Cache-Control = "public, max-age=3600"
 
-# Vendored Three.js and the generated media change rarely and are large
-# enough to be worth caching; a day keeps a replaced asset from sticking.
+# The self-hosted headline font never changes.
 [[headers]]
-  for = "/vendor/*"
+  for = "/fonts/*"
   [headers.values]
-    Cache-Control = "public, max-age=86400"
-
-[[headers]]
-  for = "/ambient/*"
-  [headers.values]
-    Cache-Control = "public, max-age=86400"
+    Cache-Control = "public, max-age=604800"
 
 # Partner view is a real page, not a redirect target.
 [[redirects]]
