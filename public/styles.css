@@ -1,52 +1,64 @@
 /* ==========================================================================
-   Never Forget
-   One screen, one decision. Everything that is not "did you submit it yet"
-   is pushed down or folded away, and the page itself changes temperature as
-   the deadline closes.
+   Never Forget -- Poster
+   One screen, one decision. The whole screen is a flat field of colour with
+   one enormous number on it, and the colour is the pressure: pale blue while
+   there is time, yellow and orange through Friday, solid red in the siege,
+   near-black once the week is missed, mint when it is done.
    ========================================================================== */
 
-:root {
-  --ink: #f2f5f9;
-  --ink-dim: #8e9aab;
-  --ink-faint: #5c6675;
-
-  --bg: #08090c;
-  --bg-lift: #0e1015;
-
-  /* Surfaces are translucent white over the background rather than flat
-     greys, so stacked panels read as depth instead of as more boxes. */
-  --surface: rgba(255, 255, 255, 0.032);
-  --surface-2: rgba(255, 255, 255, 0.055);
-  --hairline: rgba(255, 255, 255, 0.075);
-  --hairline-2: rgba(255, 255, 255, 0.13);
-
-  --accent: #4b8bff;
-  --accent-ink: #04070d;
-  --ok: #34d399;
-  --warn: #fbbf24;
-  --bad: #f87171;
-
-  --r-lg: 22px;
-  --r-md: 16px;
-  --r-sm: 11px;
-
-  --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter,
-    Roboto, 'Helvetica Neue', sans-serif;
-  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
-
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.045) inset,
-            0 18px 40px -24px rgba(0, 0, 0, 0.9);
+@font-face {
+  font-family: 'Anton';
+  src: url('/fonts/anton.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
 
-/* The page temperature. Pressure 0 is resolved, 5 is overdue. Only the accent
-   and the ambient wash change -- the layout never moves, so escalation reads
-   as mood rather than as a different screen. */
-body[data-pressure='0'] { --accent: #34d399; --wash: rgba(52, 211, 153, 0.10); }
-body[data-pressure='1'] { --accent: #4b8bff; --wash: rgba(75, 139, 255, 0.09); }
-body[data-pressure='2'] { --accent: #fbbf24; --wash: rgba(251, 191, 36, 0.11); }
-body[data-pressure='3'] { --accent: #fb923c; --wash: rgba(251, 146, 60, 0.15); }
-body[data-pressure='4'] { --accent: #f87171; --wash: rgba(248, 113, 113, 0.19); }
-body[data-pressure='5'] { --accent: #ef4444; --wash: rgba(239, 68, 68, 0.23); }
+:root {
+  --display: 'Anton', Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
+  --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter,
+    Roboto, 'Helvetica Neue', sans-serif;
+
+  /* Fixed marks, the same on every ground. */
+  --late: #f2c230;
+  --late-ink: #2a1f00;
+  --miss: #c81e12;
+  --miss-ink: #ffffff;
+}
+
+/* The ground. --ink is everything drawn on it; --loud is the headline colour
+   (only the missed state separates the two); --btn-* is the one primary
+   button; --field-* are inputs and notices, which stay paper-white so they
+   read the same on every ground. */
+body {
+  --bg: #dce8ff;
+  --ink: #0a1a3f;
+  --loud: var(--ink);
+  --btn-bg: var(--ink);
+  --btn-ink: #ffffff;
+  --field: #ffffff;
+  --field-ink: #0a1a3f;
+  --danger: #c81e12;
+}
+body[data-pressure='2'] { --bg: #ffe27a; --ink: #2a1f00; --field-ink: #2a1f00; }
+body[data-pressure='3'] { --bg: #ff9a3d; --ink: #2a1000; --field-ink: #2a1000; --danger: #8a120a; }
+body[data-pressure='4'] {
+  --bg: #c81e12; --ink: #ffffff;
+  --btn-bg: #ffffff; --btn-ink: #c81e12;
+  --field-ink: #2a0503; --danger: #ffffff;
+}
+body[data-pressure='5'] {
+  --bg: #140403; --ink: #ffffff; --loud: #ff6a5c;
+  --btn-bg: #ff6a5c; --btn-ink: #140403;
+  --field-ink: #140403; --danger: #ff6a5c;
+}
+/* Resolved wins over whatever the clock says. */
+body[data-state='done'],
+body[data-state='holiday'] {
+  --bg: #bff0d4; --ink: #06301f; --loud: var(--ink);
+  --btn-bg: var(--ink); --btn-ink: #ffffff;
+  --field-ink: #06301f; --danger: #c81e12;
+}
 
 * { box-sizing: border-box; }
 
@@ -59,729 +71,364 @@ body {
   color: var(--ink);
   font-family: var(--font);
   font-size: 16px;
-  line-height: 1.5;
+  line-height: 1.4;
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  transition: background-color 0.6s ease, color 0.6s ease;
 }
 
-/* Ambient wash. Sits behind everything, fades between pressure levels. */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background:
-    radial-gradient(90% 55% at 50% -8%, var(--wash), transparent 68%),
-    linear-gradient(180deg, var(--bg-lift), var(--bg) 42%);
-  transition: background 1.2s ease;
-  pointer-events: none;
-  z-index: 0;
-}
+.hide { display: none !important; }
 
-/* WebGL ambience (ambience.js). When it runs it owns the background and the
-   CSS wash steps aside; when it cannot run, the wash above is the fallback. */
-.ambience {
-  position: fixed;
-  inset: 0;
+a { color: inherit; }
+
+:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+/* ------------------------------------------------------------------ shell */
+
+.shell,
+.login {
   width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 0;
+  max-width: 440px;
+  margin: 0 auto;
+  padding: calc(28px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-
-.has-ambience body::before { display: none; }
-
-.shell {
-  position: relative;
-  z-index: 1;
-  width: min(100% - 32px, 480px);
-  margin-inline: auto;
-  padding: 14px 0 72px;
-}
-
-/* ------------------------------------------------------------------ topbar */
 
 .topbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
   display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 2px 14px;
-  background: linear-gradient(180deg, var(--bg) 55%, transparent);
-  backdrop-filter: blur(8px);
-}
-
-.mark {
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-}
-
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 12px 5px 9px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 650;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  transition: color 0.6s ease, background 0.6s ease, border-color 0.6s ease;
-}
-
-.status::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-body[data-pressure='4'] .status::before,
-body[data-pressure='5'] .status::before { animation: blink 1.6s ease-in-out infinite; }
-
-@keyframes blink { 50% { opacity: 0.25; } }
-
-/* -------------------------------------------------------------------- dial */
-
-.focus {
-  display: grid;
-  place-items: center;
-  padding: 18px 0 6px;
-}
-
-.dial {
-  position: relative;
-  width: min(76vw, 268px);
-  aspect-ratio: 1;
-  display: grid;
-  place-items: center;
-}
-
-.dial > svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-  overflow: visible;
-}
-
-.dial-track {
-  fill: none;
-  stroke: var(--hairline);
-  stroke-width: 5;
-}
-
-/* The arc depletes across Friday. Set via stroke-dashoffset from JS. */
-.dial-fill {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 5;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 55%, transparent));
-  transition: stroke-dashoffset 0.9s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.6s ease;
-}
-
-.dial-inner {
-  position: relative;
-  text-align: center;
-  padding: 0 22px;
-}
-
-.dial-label {
-  font-size: 11px;
-  font-weight: 620;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-  margin-bottom: 8px;
-}
-
-.dial-value {
-  font-family: var(--mono);
-  font-size: clamp(34px, 12.5vw, 50px);
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -0.035em;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-}
-
-.dial-value.is-word {
-  font-family: var(--font);
-  font-size: clamp(26px, 9vw, 36px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--accent);
-}
-
-.dial-note {
-  margin-top: 10px;
   font-size: 13px;
-  line-height: 1.45;
-  color: var(--ink-dim);
-  text-wrap: balance;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-/* Persistent tick once the week is done; drawn in by the release below. */
-.dial-check {
-  display: block;
-  width: 26px;
-  height: 26px;
-  margin: 0 auto 8px;
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 2.4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 1;
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 60%, transparent));
+/* ------------------------------------------------------------------- hero */
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* The first screen is the poster: the hero and the button fill it, and
+     everything else starts below the fold. */
+  min-height: calc(100dvh - 330px);
 }
 
-.dial-wave {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 0;
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
+.hero-big {
+  font-family: var(--display);
+  font-size: min(77vw, 300px);
+  line-height: 0.9;
+  color: var(--loud);
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+.hero-big.is-word { font-size: min(34vw, 132px); line-height: 0.95; }
+.hero-big.is-long { font-size: min(27vw, 104px); line-height: 0.95; }
+
+.hero-unit {
+  font-family: var(--display);
+  font-size: min(17vw, 66px);
+  line-height: 1;
+  text-transform: uppercase;
 }
 
-/* ----------------------------------------------------------------- release
-   Played once by release.js after a confirm lands: the ring sweeps full and
-   flashes, a wave leaves it, the old countdown dissolves while "Done" rises
-   through it, and the streak ticks up. Roughly two seconds, start to settle. */
-
-.is-releasing .dial { animation: dial-pop 0.8s cubic-bezier(0.3, 0, 0.2, 1.4); }
-.is-releasing .dial-fill { animation: ring-flash 1.2s ease-out; }
-.is-releasing .dial-wave { animation: ring-wave 1.1s cubic-bezier(0.1, 0.6, 0.3, 1) 0.15s; }
-.is-releasing .dial-check path {
-  animation: check-draw 0.5s cubic-bezier(0.6, 0, 0.3, 1) 0.45s both;
+.hero-line {
+  font-family: var(--display);
+  font-size: 30px;
+  line-height: 1.1;
+  text-transform: uppercase;
 }
-.is-releasing .dial-check { animation: rise 0.5s ease-out 0.35s both; }
-.is-releasing .dial-value:not(.dial-ghost) { animation: rise 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) 0.25s both; }
-.is-releasing .dial-label,
-.is-releasing .dial-note { animation: fade-in 0.6s ease 0.55s both; }
-.is-releasing + .actions { animation: fade-in 0.6s ease 1s both; }
+.hero-unit:empty,
+.hero-line:empty { display: none; }
 
-.dial-ghost {
-  position: absolute;
-  left: 0;
-  right: 0;
-  pointer-events: none;
-  animation: dissolve 0.5s ease-in forwards;
+.hero-sub {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.35;
+  font-weight: 500;
 }
 
-.release-sparks {
-  position: absolute;
-  pointer-events: none;
-  z-index: 2;
+.hero-clock {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
+.hero-clock.is-idle { display: none; }
 
-/* Portrait clip centred on the dial and allowed to spill over the page; the
-   radial mask means its frame edges never show. */
-.release-video {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 230%;
-  aspect-ratio: 9 / 16;
-  transform: translate(-50%, -50%);
-  object-fit: cover;
-  mix-blend-mode: screen;
-  -webkit-mask-image: radial-gradient(closest-side, #000 55%, transparent);
-  mask-image: radial-gradient(closest-side, #000 55%, transparent);
-  pointer-events: none;
-  z-index: 2;
-  animation: video-out 3.8s linear forwards;
-}
-
-@keyframes video-out {
-  0%, 70% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-/* Three.js ring (dial3d.js). Same footprint as the SVG ring, overhanging it
-   by half so glow and embers are not clipped. The SVG ring hides only once
-   the 3D one is drawing; the release wave stays SVG. */
-.dial3d {
-  position: absolute;
-  left: -25%;
-  top: -25%;
-  width: 150%;
-  height: 150%;
-  pointer-events: none;
-  animation: fade-in 0.6s ease;
-}
-
-.dial.is-3d .dial-track,
-.dial.is-3d .dial-fill { display: none; }
-
-.metric-n.is-pop { animation: pop 0.6s cubic-bezier(0.3, 0, 0.2, 1.5) 0.55s; }
-
-@keyframes dial-pop {
-  0% { transform: scale(1); }
-  30% { transform: scale(0.95); }
-  65% { transform: scale(1.035); }
+/* The release: the word that replaces the number lands like a stamp. */
+@keyframes stamp {
+  0% { transform: scale(1.5); opacity: 0; }
+  55% { transform: scale(0.96); opacity: 1; }
   100% { transform: scale(1); }
 }
-
-@keyframes ring-flash {
-  0%, 100% { stroke-width: 5; }
-  25% {
-    stroke-width: 11;
-    filter: drop-shadow(0 0 26px var(--accent)) brightness(1.6);
-  }
+.hero.is-releasing .hero-big {
+  transform-origin: left center;
+  animation: stamp 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
-
-@keyframes ring-wave {
-  0% { opacity: 0.9; stroke-width: 6; transform: scale(1); }
-  100% { opacity: 0; stroke-width: 0.5; transform: scale(1.7); }
-}
-
-@keyframes check-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-
-@keyframes rise {
-  from { opacity: 0; transform: translateY(12px) scale(0.96); filter: blur(6px); }
-  to { opacity: 1; transform: none; filter: none; }
-}
-
-@keyframes dissolve {
-  to { opacity: 0; transform: scale(1.18); filter: blur(10px); }
-}
-
-@keyframes fade-in { from { opacity: 0; } }
-
 @keyframes pop {
-  45% { transform: scale(1.4); color: var(--accent); }
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
 }
+.is-pop { display: inline-block; animation: pop 0.6s ease 0.55s both; }
 
-body[data-pressure='4'] .dial-value,
-body[data-pressure='5'] .dial-value { animation: throb 2.4s ease-in-out infinite; }
-
-@keyframes throb { 50% { opacity: 0.5; } }
-
-/* ----------------------------------------------------------------- actions */
+/* ---------------------------------------------------------------- buttons */
 
 .actions {
-  display: grid;
-  gap: 9px;
-  margin: 22px 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .btn {
-  appearance: none;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  padding: 17px 18px;
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
+  min-height: 48px;
+  padding: 0 16px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
   font-family: var(--font);
-  font-size: 15.5px;
-  font-weight: 620;
-  letter-spacing: -0.01em;
+  font-size: 15px;
+  font-weight: 700;
   text-align: center;
   text-decoration: none;
   cursor: pointer;
-  transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease,
-    opacity 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
 }
-
-.btn:active { transform: scale(0.985); }
-.btn:disabled { opacity: 0.45; pointer-events: none; }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.6; cursor: default; }
 
 .btn-primary {
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 700;
-  font-size: 16.5px;
-  padding: 19px 18px;
-  box-shadow: 0 14px 32px -18px color-mix(in srgb, var(--accent) 90%, transparent);
+  min-height: 64px;
+  border: 0;
+  background: var(--btn-bg);
+  color: var(--btn-ink);
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
-
-.btn-ghost {
-  background: var(--surface);
-  color: var(--ink);
-  border-color: var(--hairline);
-}
-
-.btn-ghost:hover { background: var(--surface-2); }
+/* The button grows with the pressure. */
+body[data-pressure='4'] .btn-primary,
+body[data-pressure='5'] .btn-primary { min-height: 80px; font-size: 28px; }
+body[data-state='done'] .btn-primary,
+body[data-state='holiday'] .btn-primary { min-height: 64px; font-size: 24px; }
 
 .btn-quiet {
-  background: transparent;
-  color: var(--ink-dim);
-  border-color: var(--hairline);
+  border: 0;
+  justify-content: flex-start;
+  padding: 0;
   font-size: 14px;
-  font-weight: 550;
-  padding: 13px 16px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .btn-sm {
+  display: inline-flex;
   width: auto;
-  display: inline-block;
-  padding: 7px 13px;
-  font-size: 12.5px;
-  border-radius: var(--r-sm);
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 13px;
+  text-transform: uppercase;
 }
 
-/* ----------------------------------------------------------------- metrics */
+/* ---------------------------------------------------------------- notices */
+
+.notice {
+  padding: 12px 14px;
+  border: 2px solid var(--ink);
+  background: var(--field);
+  color: var(--field-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.notice-bad {
+  background: var(--miss);
+  color: var(--miss-ink);
+}
+
+/* ---------------------------------------------------------------- metrics */
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  margin: 18px 0;
-  padding: 15px 0;
-  border-block: 1px solid var(--hairline);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
 }
-
-.metric { text-align: center; position: relative; }
-
-.metric + .metric::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 12%;
-  height: 76%;
-  width: 1px;
-  background: var(--hairline);
-}
-
-.metric-n {
-  display: block;
-  font-size: 26px;
-  font-weight: 680;
-  line-height: 1.1;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-}
-
+.metric { display: flex; flex-direction: column; }
+.metric-n { font-family: var(--display); font-size: 44px; line-height: 1; }
 .metric-k {
-  display: block;
-  margin-top: 3px;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.13em;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ink-faint);
 }
 
-/* ------------------------------------------------------------------ panels */
+/* ----------------------------------------------------------------- panels */
 
 .panel {
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-  padding: 17px 17px 18px;
-  margin-bottom: 11px;
-  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
+.panel + .panel,
+details.panel { border-top: 2px solid var(--ink); padding-top: 12px; }
 
 .panel-title {
-  margin: 0 0 14px;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.15em;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ink-faint);
 }
 
-/* Folded by default: rarely-used controls should not outweigh the one
-   decision this screen exists to capture. */
-details.panel { padding: 0; }
-
 details.panel > summary {
-  list-style: none;
-  cursor: pointer;
-  padding: 16px 17px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 13.5px;
-  font-weight: 620;
-  color: var(--ink);
+  min-height: 48px;
+  font-family: var(--display);
+  font-size: 30px;
+  line-height: 1;
+  text-transform: uppercase;
+  list-style: none;
+  cursor: pointer;
 }
-
 details.panel > summary::-webkit-details-marker { display: none; }
+details.panel > summary::after { content: '+'; }
+details.panel[open] > summary::after { content: '–'; }
 
-details.panel > summary::after {
-  content: '';
-  width: 7px;
-  height: 7px;
-  margin-right: 4px;
-  border-right: 1.8px solid var(--ink-faint);
-  border-bottom: 1.8px solid var(--ink-faint);
-  transform: rotate(45deg) translate(-2px, -2px);
-  transition: transform 0.22s ease;
-}
+.panel-body { padding: 6px 0 8px; }
 
-details.panel[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
-details.panel[open] > summary { border-bottom: 1px solid var(--hairline); }
-
-.panel-body { padding: 16px 17px 18px; }
-
-/* ----------------------------------------------------------------- history */
-
+/* Twelve weeks, six to a row. A solid block is a week done on time; anything
+   else says what it is in words, so nothing depends on telling colours apart. */
 .history {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 5px;
-  align-items: end;
-  height: 58px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
 }
-
 .hbar {
-  position: relative;
-  border-radius: 5px;
-  background: var(--surface-2);
-  border: 1px solid var(--hairline);
-  height: 34%;
-  transition: height 0.3s ease;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ink);
+  font-family: var(--display);
+  font-size: 17px;
+  line-height: 1;
 }
-
-.hbar[data-s='ontime'] {
-  height: 100%;
-  background: color-mix(in srgb, var(--ok) 24%, transparent);
-  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
-}
-
-.hbar[data-s='late'] {
-  height: 62%;
-  background: color-mix(in srgb, var(--warn) 24%, transparent);
-  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
-}
-
-.hbar[data-s='skipped'] {
-  height: 46%;
-  background: var(--surface-2);
-  border-style: dashed;
-  border-color: var(--hairline-2);
-}
-
-.hbar[data-s='missed'] {
-  height: 22%;
-  background: color-mix(in srgb, var(--bad) 26%, transparent);
-  border-color: color-mix(in srgb, var(--bad) 48%, transparent);
-}
+.hbar[data-s='ontime'] { background: var(--ink); }
+.hbar[data-s='late'] { background: var(--late); color: var(--late-ink); }
+.hbar[data-s='late']::after { content: 'LATE'; }
+.hbar[data-s='missed'] { background: var(--miss); color: var(--miss-ink); }
+.hbar[data-s='missed']::after { content: 'MISS'; }
+.hbar[data-s='skipped'] { border-style: dashed; }
+.hbar[data-s='skipped']::after { content: 'HOL'; }
+.hbar[data-s='pending'] { background: var(--field); color: var(--field-ink); }
+.hbar[data-s='pending']::after { content: 'NOW'; }
 
 .history-axis {
   display: flex;
   justify-content: space-between;
-  margin-top: 9px;
-  font-size: 10.5px;
-  color: var(--ink-faint);
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: 600;
 }
-
-.legend {
-  display: flex;
-  gap: 14px;
-  margin-top: 13px;
-  padding-top: 13px;
-  border-top: 1px solid var(--hairline);
-  font-size: 11.5px;
-  color: var(--ink-dim);
-}
-
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-
-.legend i.dashed {
-  background: transparent;
-  border: 1px dashed var(--hairline-2);
-}
-
-.legend i {
-  width: 9px;
-  height: 9px;
-  border-radius: 3px;
-  font-style: normal;
-}
-
-/* -------------------------------------------------------------------- rows */
+.legend { font-size: 12px; font-weight: 600; }
 
 .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--hairline);
-  font-size: 14.5px;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
 }
+.row + .row { border-top: 1px solid color-mix(in srgb, var(--ink) 35%, transparent); }
+.row-v { font-family: var(--display); font-size: 22px; text-transform: uppercase; }
 
-.row:first-child { padding-top: 0; }
-.row:last-child { border-bottom: none; padding-bottom: 0; }
-.row-k { color: var(--ink-dim); flex: 0 0 auto; }
-.row-v { font-weight: 620; text-align: right; }
+/* ------------------------------------------------------------------ forms */
 
-/* ------------------------------------------------------------------ inputs */
-
-.field { margin-top: 15px; }
-.field:first-child { margin-top: 0; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field + .field { margin-top: 14px; }
 
 label {
-  display: block;
-  margin-bottom: 7px;
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-dim);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 input,
 select {
   width: 100%;
-  padding: 13px 14px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--hairline-2);
-  background: rgba(0, 0, 0, 0.28);
-  color: var(--ink);
+  height: 52px;
+  padding: 0 12px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--field);
+  color: var(--field-ink);
   font-family: var(--font);
-  font-size: 15.5px;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  font-size: 16px;
+  font-weight: 600;
 }
 
-select {
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--ink-faint) 50%),
-    linear-gradient(135deg, var(--ink-faint) 50%, transparent 50%);
-  background-position: calc(100% - 19px) 51%, calc(100% - 14px) 51%;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-  padding-right: 38px;
+.hint { font-size: 13px; font-weight: 500; }
+
+.divider { height: 0; margin: 18px 0; border-top: 2px solid var(--ink); }
+
+.btn-danger {
+  background: var(--field);
+  border-color: var(--miss);
+  color: var(--miss);
+  text-transform: uppercase;
 }
 
-input:focus,
-select:focus {
-  outline: none;
-  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
-}
+.foot { padding: 8px 0; text-align: center; font-size: 14px; font-weight: 600; }
+.foot a { display: inline-flex; align-items: center; min-height: 44px; }
 
-.hint {
-  margin-top: 7px;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--ink-faint);
-}
+/* ------------------------------------------------------------------ login */
 
-/* ----------------------------------------------------------------- notices */
-
-.notice {
-  padding: 13px 15px;
-  border-radius: var(--r-md);
-  font-size: 13px;
-  line-height: 1.5;
-  margin-bottom: 11px;
-  border: 1px solid;
-}
-
-.notice-info {
-  background: rgba(75, 139, 255, 0.1);
-  border-color: rgba(75, 139, 255, 0.28);
-  color: #bcd3ff;
-}
-
-.notice-ok {
-  background: rgba(52, 211, 153, 0.1);
-  border-color: rgba(52, 211, 153, 0.28);
-  color: #a7f3d8;
-}
-
-.notice-bad {
-  background: rgba(248, 113, 113, 0.1);
-  border-color: rgba(248, 113, 113, 0.3);
-  color: #fecaca;
-}
-
-/* ------------------------------------------------------------------- login */
-
-.login {
-  width: min(100% - 40px, 360px);
-  margin-inline: auto;
-  padding-top: min(20vh, 150px);
-  position: relative;
-  z-index: 1;
-}
-
+.login { min-height: 100dvh; gap: 14px; }
 .login-mark {
-  width: 44px;
-  height: 44px;
-  margin: 0 auto 20px;
-  border-radius: 13px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  display: grid;
-  place-items: center;
-  font-size: 25px;
-  font-weight: 800;
-  box-shadow: 0 16px 34px -18px var(--accent);
+  font-family: var(--display);
+  font-size: min(77vw, 300px);
+  line-height: 0.9;
 }
-
 .login h1 {
-  margin: 0 0 6px;
-  font-size: 23px;
-  font-weight: 680;
-  letter-spacing: -0.025em;
-  text-align: center;
+  margin: 0;
+  font-family: var(--display);
+  font-size: min(21vw, 84px);
+  font-weight: 400;
+  line-height: 0.98;
+  text-transform: uppercase;
 }
-
-.login p {
-  margin: 0 0 24px;
-  text-align: center;
-  font-size: 14px;
-  color: var(--ink-dim);
-}
-
-.login-row { display: flex; gap: 8px; }
-.login-row input { flex: 1; }
-
+.login p { margin: 0; font-size: 19px; font-weight: 500; }
+.login-form { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+.login-row { display: flex; border: 2px solid var(--ink); background: var(--field); }
+.login-row input { border: 0; height: 56px; min-width: 0; flex: 1; font-size: 18px; }
 .login-row .btn {
   width: auto;
-  flex: 0 0 auto;
-  padding-inline: 15px;
-  font-size: 13.5px;
-}
-
-/* ------------------------------------------------------------------- misc */
-
-.hide { display: none !important; }
-
-.foot {
-  margin-top: 26px;
-  text-align: center;
-}
-
-.foot a {
-  font-size: 12.5px;
-  color: var(--ink-faint);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-}
-
-.foot a:hover { border-bottom-color: var(--ink-faint); }
-
-.divider {
-  height: 1px;
-  background: var(--hairline);
-  margin: 17px 0;
+  min-height: 56px;
+  border: 0;
+  border-left: 2px solid var(--ink);
+  color: var(--field-ink);
+  font-size: 14px;
+  text-transform: uppercase;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-  }
+  body { transition: none; }
+  .hero.is-releasing .hero-big,
+  .is-pop { animation: none; }
 }
