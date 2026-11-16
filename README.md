@@ -77,13 +77,18 @@ Design decisions worth knowing:
 
 ### Look
 
-The app is a poster: a flat field of colour with one enormous number on it
+The app is a poster: a flat field of colour with one enormous number on it,
+inside a ring that burns down through Friday
 (`public/styles.css`). The colour is the pressure level — pale blue while there
 is time, yellow from midday, orange from 4 PM, solid red in the siege,
 near-black once the week is missed, and mint when it is done or a holiday.
 The layout never moves; only the ground, the number and the size of the button
 change. The headline type is Anton, self-hosted in `public/fonts/` (SIL Open
 Font License) so the app makes no third-party requests.
+
+Each ground is lit from behind the ring and darkens toward the bottom, the
+ring glows in its own colour, and the light breathes slowly (held still with
+reduced motion). Buttons, cards and fields are soft and rounded.
 
 Preview any colour with `?mood=0` … `?mood=5`, or `?mood=done`.
 

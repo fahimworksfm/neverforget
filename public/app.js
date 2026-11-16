@@ -89,6 +89,24 @@ function bigCountdown(hours) {
   return [String(mins), mins === 1 ? 'Minute.' : 'Minutes.'];
 }
 
+// Fraction of Friday still available, 0..1. Drives the ring.
+function remainingFraction(week) {
+  // A resolved week shows a full ring; an empty one reads as "you ran out".
+  if (week.status === 'confirmed' || week.status === 'skipped') return 1;
+  if (week.hoursLeft <= 0) return 0;
+  if (week.minutesIntoDueDay < 0) return 1;
+  return Math.max(0, Math.min(1, 1 - week.minutesIntoDueDay / 1440));
+}
+
+function drawRing(fraction) {
+  const el = $('ringFill');
+  const c = 2 * Math.PI * Number(el.getAttribute('r'));
+  el.style.strokeDasharray = String(c);
+  el.style.strokeDashoffset = String(c * (1 - fraction));
+  // A round cap leaves a dot on an empty ring; hide it.
+  el.style.opacity = fraction > 0 ? '1' : '0';
+}
+
 // ?mood=0..5 or ?mood=done previews a colour without waiting for Friday.
 const MOOD = new URLSearchParams(location.search).get('mood');
 
@@ -171,6 +189,8 @@ function render() {
     $('confirmBtn').classList.remove('hide');
     $('undoBtn').classList.add('hide');
   }
+
+  drawRing(remainingFraction(week));
 
   const link = $('openSheet');
   link.classList.toggle('hide', !timesheetUrl);
