@@ -86,6 +86,10 @@ The layout never moves; only the ground, the number and the size of the button
 change. The headline type is Anton, self-hosted in `public/fonts/` (SIL Open
 Font License) so the app makes no third-party requests.
 
+Each ground is lit from behind the ring and darkens toward the bottom, the
+ring glows in its own colour, and the light breathes slowly (held still with
+reduced motion). Buttons, cards and fields are soft and rounded.
+
 Preview any colour with `?mood=0` … `?mood=5`, or `?mood=done`.
 
 Confirming plays a short release (`public/release.js`), and only once the

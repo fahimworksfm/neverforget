@@ -57,6 +57,8 @@ function drawRing(fraction) {
   const c = 2 * Math.PI * Number(el.getAttribute('r'));
   el.style.strokeDasharray = String(c);
   el.style.strokeDashoffset = String(c * (1 - fraction));
+  // A round cap leaves a dot on an empty ring; hide it.
+  el.style.opacity = fraction > 0 ? '1' : '0';
 }
 
 function render() {
@@ -80,7 +82,12 @@ function render() {
     $('heroSub').textContent = `${week.label} closed unsubmitted.`;
   } else {
     const h = Math.floor(week.hoursLeft);
-    const left = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h`;
+    const left =
+      h >= 24
+        ? `${Math.floor(h / 24)}d ${h % 24}h`
+        : h >= 1
+          ? `${h}h`
+          : `${Math.max(1, Math.ceil(week.hoursLeft * 60))} min`;
     big.textContent = 'Not yet.';
     $('heroSub').textContent = `${owner} has not submitted ${week.label} yet. ${left} left.`;
   }

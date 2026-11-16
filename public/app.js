@@ -103,6 +103,8 @@ function drawRing(fraction) {
   const c = 2 * Math.PI * Number(el.getAttribute('r'));
   el.style.strokeDasharray = String(c);
   el.style.strokeDashoffset = String(c * (1 - fraction));
+  // A round cap leaves a dot on an empty ring; hide it.
+  el.style.opacity = fraction > 0 ? '1' : '0';
 }
 
 // ?mood=0..5 or ?mood=done previews a colour without waiting for Friday.

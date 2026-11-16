@@ -475,9 +475,111 @@ select {
   text-transform: uppercase;
 }
 
+/* ------------------------------------------------------------------- glow
+   The old app's light on the new colours: each ground is lit from behind
+   the ring and darkens toward the bottom, the ring glows in its own colour,
+   and the light breathes slowly. Buttons, cards and fields are soft and
+   rounded rather than ruled. */
+
+body {
+  --bg2: #b9cef5;
+  --light: #ffffff;
+  --ring: #2f6bff;
+  --ring-glow: rgba(75, 139, 255, 0.9);
+  --card: rgba(255, 255, 255, 0.55);
+  --r: 16px;
+}
+body[data-pressure='2'] { --bg2: #ffcf3d; --light: #fff8d6; --ring: var(--loud); --ring-glow: rgba(255, 170, 0, 0.85); }
+body[data-pressure='3'] { --bg2: #ee7a14; --light: #ffc27e; --ring: var(--loud); --ring-glow: rgba(255, 120, 20, 0.85); }
+body[data-pressure='4'] {
+  --bg2: #8e140c; --light: #f0503f; --ring: #ffffff;
+  --ring-glow: rgba(255, 220, 200, 0.95); --card: rgba(0, 0, 0, 0.2);
+}
+body[data-pressure='5'] {
+  --bg2: #070101; --light: #3d0e0a; --ring: var(--loud);
+  --ring-glow: rgba(255, 106, 92, 0.85); --card: rgba(255, 255, 255, 0.07);
+}
+body[data-state='done'],
+body[data-state='holiday'] {
+  --bg2: #9fe3bf; --light: #f1fff7; --ring: #0e7a48;
+  --ring-glow: rgba(14, 122, 72, 0.55); --card: rgba(255, 255, 255, 0.55);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 42% at 50% 30%, var(--light), transparent 100%),
+    linear-gradient(180deg, var(--bg), var(--bg2));
+  animation: breathe 7s ease-in-out infinite alternate;
+}
+@keyframes breathe {
+  from { opacity: 0.85; }
+  to { opacity: 1; }
+}
+.shell,
+.login { position: relative; z-index: 1; }
+
+.ring svg { filter: drop-shadow(0 0 12px var(--ring-glow)); }
+.ring-fill { stroke: var(--ring); stroke-width: 6; }
+.ring-track { stroke-width: 6; stroke: color-mix(in srgb, var(--ink) 14%, transparent); }
+body[data-pressure='4'] .hero-big,
+body[data-pressure='5'] .hero-big { text-shadow: 0 0 30px var(--ring-glow); }
+
+.btn {
+  border: 0;
+  border-radius: var(--r);
+  background: var(--card);
+}
+.btn-primary {
+  background: var(--btn-bg);
+  box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--btn-bg) 70%, black);
+}
+body[data-pressure='4'] .btn-primary,
+body[data-pressure='5'] .btn-primary { box-shadow: 0 0 40px -6px var(--ring-glow); }
+.btn-quiet { background: transparent; }
+.btn-danger { border: 2px solid var(--miss); background: var(--field); }
+
+.notice { border: 0; border-radius: 12px; }
+
+.metrics {
+  gap: 10px;
+  padding: 0;
+  border: 0;
+}
+.metric {
+  align-items: center;
+  padding: 12px 0;
+  border-radius: var(--r);
+  background: var(--card);
+}
+.metric-n { font-size: 32px; }
+
+.panel + .panel,
+details.panel {
+  border-top: 0;
+  padding: 14px 16px;
+  border-radius: 22px;
+  background: var(--card);
+}
+
+.hbar { border-radius: 8px; border-color: transparent; }
+.hbar[data-s='skipped'] { border-color: var(--ink); }
+.hbar[data-s='pending'] { border-color: var(--ink); }
+
+input,
+select { border: 0; border-radius: 12px; }
+.login-row { border: 0; border-radius: var(--r); overflow: hidden; }
+.login-row .btn { border-left: 1px solid color-mix(in srgb, var(--field-ink) 20%, transparent); border-radius: 0; background: transparent; }
+.divider { border-top-width: 1px; }
+
 @media (prefers-reduced-motion: reduce) {
   body { transition: none; }
   .ring-fill { transition: none; }
+  body::before { animation: none; }
   .hero.is-releasing .hero-big,
   .is-pop { animation: none; }
 }
