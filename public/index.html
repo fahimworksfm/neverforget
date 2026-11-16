@@ -55,11 +55,19 @@
   <div id="holidayBanner" class="notice notice-info hide"></div>
 
   <section class="hero">
-    <div class="hero-big" id="bigNum">—</div>
-    <div class="hero-unit" id="bigUnit"></div>
+    <div class="ring">
+      <svg viewBox="0 0 200 200" aria-hidden="true">
+        <circle class="ring-track" cx="100" cy="100" r="92"></circle>
+        <circle class="ring-fill" id="ringFill" cx="100" cy="100" r="92"></circle>
+      </svg>
+      <div class="ring-inner">
+        <div class="hero-big" id="bigNum">—</div>
+        <div class="hero-unit" id="bigUnit"></div>
+        <div class="hero-clock" id="heroClock"><span id="heroLabel">Time left</span> <span id="countdown">—</span></div>
+      </div>
+    </div>
     <div class="hero-line" id="heroLine"></div>
     <p class="hero-sub" id="heroSub">—</p>
-    <div class="hero-clock" id="heroClock"><span id="heroLabel">Time left</span> <span id="countdown">—</span></div>
   </section>
 
   <div class="actions">

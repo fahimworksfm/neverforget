@@ -43,6 +43,22 @@ function startLive() {
   poller = setInterval(() => refresh().catch(() => {}), 60_000);
 }
 
+// Fraction of Friday still available, 0..1. Drives the ring.
+function remainingFraction(week) {
+  // A resolved week shows a full ring; an empty one reads as "you ran out".
+  if (week.status === 'confirmed' || week.status === 'skipped') return 1;
+  if (week.hoursLeft <= 0) return 0;
+  if (week.minutesIntoDueDay < 0) return 1;
+  return Math.max(0, Math.min(1, 1 - week.minutesIntoDueDay / 1440));
+}
+
+function drawRing(fraction) {
+  const el = $('ringFill');
+  const c = 2 * Math.PI * Number(el.getAttribute('r'));
+  el.style.strokeDasharray = String(c);
+  el.style.strokeDashoffset = String(c * (1 - fraction));
+}
+
 function render() {
   const { week, pressure, streak, best, stakes, names } = state;
   const owner = names.owner;
@@ -69,6 +85,7 @@ function render() {
     $('heroSub').textContent = `${owner} has not submitted ${week.label} yet. ${left} left.`;
   }
   big.classList.toggle('is-long', big.textContent.length > 5);
+  drawRing(remainingFraction(week));
   document.body.dataset.pressure = String(pressure.level);
   document.body.dataset.state = mode;
   document

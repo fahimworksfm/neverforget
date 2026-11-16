@@ -77,7 +77,8 @@ Design decisions worth knowing:
 
 ### Look
 
-The app is a poster: a flat field of colour with one enormous number on it
+The app is a poster: a flat field of colour with one enormous number on it,
+inside a ring that burns down through Friday
 (`public/styles.css`). The colour is the pressure level — pale blue while there
 is time, yellow from midday, orange from 4 PM, solid red in the siege,
 near-black once the week is missed, and mint when it is done or a holiday.
