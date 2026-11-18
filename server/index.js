@@ -42,7 +42,8 @@ import {
 import { startScheduler, tick } from './scheduler.js';
 import { COOKIE, issue, verify, roleForCode, requireRole, cookieOptions, codesConfigured } from './auth.js';
 import { validateSettingsPatch } from '../lib/settings.js';
-import { resolveHoliday } from '../lib/holidays.js';
+import { resolveHoliday, nextHolidayFriday } from '../lib/holidays.js';
+import { NUDGE_COOLDOWN_MS, cleanNudgeMessage, nudgeAvailableAt, WEEK_KEY } from '../lib/nudge.js';
 import { createThrottle } from '../lib/throttle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -79,6 +80,10 @@ function currentHoliday(weekKey) {
   });
 }
 
+// When the partner last sent a manual nudge. In memory: a restart forgets it,
+// which only ever errs toward allowing one more nudge.
+let lastManualNudge = 0;
+
 function buildState() {
   const timezone = setting('timezone');
   const graceDays = Number(setting('grace_days'));
@@ -91,6 +96,8 @@ function buildState() {
   const hoursLeft = hoursUntilDeadline(weekKey, timezone, now, holiday.shiftDays);
   const minutes = minutesIntoDueDay(weekKey, timezone, now, holiday.shiftDays);
   const pressure = pressureLevel(week, { minutes, hoursLeft, soften: holiday.soften });
+  const ledger = stakesLedger();
+  const stakeFor = new Map(ledger.map((s) => [s.week_key, s]));
 
   return {
     now: now.toISOString(),
@@ -116,6 +123,7 @@ function buildState() {
       handling: setting('holiday_handling'),
       country: setting('holiday_country'),
       known: Boolean(getHolidayCache()),
+      next: nextHolidayFriday(getHolidayCache(), dueDateFor(weekKey, 0).iso),
     },
     pressure,
     streak: currentStreak(),
@@ -127,19 +135,26 @@ function buildState() {
       onTime: w.on_time === 1,
       nudgeCount: w.nudge_count,
       holiday: w.holiday_name || null,
+      confirmedAt: w.confirmed_at,
+      missedAt: w.missed_at,
+      streakLost: w.streak_lost,
+      stake: stakeFor.has(w.week_key)
+        ? { amount: stakeFor.get(w.week_key).amount, status: stakeFor.get(w.week_key).status }
+        : null,
     })),
     stakes: {
       enabled: settingBool('stakes_enabled'),
       amount: Number(setting('stakes_amount')),
       recipient: setting('stakes_recipient'),
       outstanding: outstandingStakes(),
-      ledger: stakesLedger().map((s) => ({
+      ledger: ledger.map((s) => ({
         week: s.week_key,
         amount: s.amount,
         status: s.status,
       })),
     },
     names: { owner: setting('owner_name'), partner: setting('partner_name') },
+    nudge: { availableAt: nudgeAvailableAt(lastManualNudge, now.getTime()) },
     timesheetUrl: setting('timesheet_url'),
     devices: { owner: subscriptionCount('owner'), partner: subscriptionCount('partner') },
     pushConfigured,
@@ -305,13 +320,29 @@ app.post('/api/stakes/:week/settle', requireRole('owner', 'partner'), (req, res)
   res.json({ ok: true, ...buildState() });
 });
 
+// A past week she missed that was really a day off. Turns the miss into a
+// skipped week -- neutral for the streak -- and drops any stake still owed.
+// A stake already settled stays on the ledger: that money has moved.
+app.post('/api/weeks/:week/holiday', requireRole('owner'), (req, res) => {
+  const weekKey = req.params.week;
+  if (!WEEK_KEY.test(weekKey)) return res.status(400).json({ error: 'bad_week' });
+  const week = getWeek(weekKey);
+  if (!week) return res.status(404).json({ error: 'not_found' });
+  if (week.status !== 'missed') return res.status(409).json({ error: 'not_missed' });
+  db.prepare(
+    "UPDATE weeks SET status = 'skipped', on_time = NULL, streak_lost = NULL, holiday_name = COALESCE(holiday_name, 'Marked as a holiday') WHERE week_key = ? AND status = 'missed'"
+  ).run(weekKey);
+  db.prepare("DELETE FROM stakes WHERE week_key = ? AND status = 'owed'").run(weekKey);
+  logEvent(weekKey, 'marked_holiday');
+  res.json({ ok: true, ...buildState() });
+});
+
 // A manual nudge from the partner. Rate-limited to one an hour so it stays a
 // nudge and not a weapon.
-let lastManualNudge = 0;
 app.post('/api/nudge', requireRole('partner'), async (req, res) => {
   const now = Date.now();
-  if (now - lastManualNudge < 3_600_000) {
-    const mins = Math.ceil((3_600_000 - (now - lastManualNudge)) / 60_000);
+  if (now - lastManualNudge < NUDGE_COOLDOWN_MS) {
+    const mins = Math.ceil((NUDGE_COOLDOWN_MS - (now - lastManualNudge)) / 60_000);
     return res.status(429).json({ error: 'rate_limited', retryInMinutes: mins });
   }
   const timezone = setting('timezone');
@@ -327,7 +358,7 @@ app.post('/api/nudge', requireRole('partner'), async (req, res) => {
       tag: `timesheet-${weekKey}`,
       renotify: true,
       title: `A nudge from ${setting('partner_name')}`,
-      body: 'The timesheet is still showing as unsubmitted.',
+      body: cleanNudgeMessage(req.body?.message),
       urgency: 'high',
       requireInteraction: true,
       stage: 'manual',

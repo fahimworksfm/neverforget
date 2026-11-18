@@ -120,16 +120,42 @@ function setHero(big, unit, line, kind) {
 }
 
 function renderHistory(history) {
-  const host = $('weeks');
-  host.innerHTML = history
-    .map((w) => {
-      const s = w.status === 'confirmed' ? (w.onTime ? 'ontime' : 'late') : w.status;
-      return `<div class="hbar" data-s="${s}" title="${w.label} — ${s}"></div>`;
-    })
-    .join('');
-  const short = (l) => (l || '').replace(/^\w+,\s*/, '');
-  $('histFrom').textContent = history.length ? short(history[0].label) : '';
-  $('histTo').textContent = history.length ? short(history[history.length - 1].label) : '';
+  ui.renderWeeks($('weeks'), history, (w) => ui.weekSheet(w, { onMarkHoliday: markHoliday }));
+}
+
+// A missed week that was really a day off. Returns true when it landed, so
+// the sheet knows to close.
+async function markHoliday(w) {
+  try {
+    state = await api(`/api/weeks/${w.key}/holiday`, { method: 'POST', body: '{}' });
+    render();
+    ui.toast(`${w.label} is now a holiday. The miss is off the record.`, { kind: 'ok' });
+    return true;
+  } catch (e) {
+    ui.toast(`Could not change that week (${e.code || e.status || 'no connection'}).`, { kind: 'bad' });
+    return false;
+  }
+}
+
+// What happens next, in one line: the next rung of the ladder while there is
+// one, the siege after that. Times come from the server's ladder, never from
+// text restated here.
+function nextReminderText(week, holiday, ladder) {
+  const due = week.dueDate
+    ? new Date(`${week.dueDate}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'long', timeZone: 'UTC' })
+    : 'Friday';
+  if (holiday?.soften) return `A gentle reminder or two, no penalty · ${week.label}`;
+  const rungs = (ladder || []).filter((r) => r.at != null).sort((a, b) => a.at - b.at);
+  if (week.minutesIntoDueDay < 0) {
+    return rungs.length
+      ? `Reminders start ${due} at ${rungs[0].clock} · due by midnight`
+      : `Due by midnight on ${due}`;
+  }
+  if (week.minutesIntoDueDay >= week.siegeBeginsAt) {
+    return 'Reminders every few minutes until you confirm';
+  }
+  const next = rungs.find((r) => r.at > week.minutesIntoDueDay);
+  return next ? `Next reminder at ${next.clock} · due by midnight` : 'Due by midnight tonight';
 }
 
 function render() {
@@ -185,7 +211,7 @@ function render() {
     const [big, unit] = bigCountdown(week.hoursLeft);
     setHero(big, unit, pressure.level >= 4 ? 'Politeness is over.' : '', 'number');
     $('heroLabel').textContent = 'Time left';
-    $('heroSub').textContent = `Due before Saturday · ${week.label}`;
+    $('heroSub').textContent = nextReminderText(week, state.holiday, state.ladder);
     $('confirmBtn').classList.remove('hide');
     $('undoBtn').classList.add('hide');
   }
@@ -195,10 +221,13 @@ function render() {
   const link = $('openSheet');
   link.classList.toggle('hide', !timesheetUrl);
   if (timesheetUrl) link.href = timesheetUrl;
+  // Without a link there is only one step, so it loses its number.
+  $('steps').classList.toggle('no-link', !timesheetUrl || confirmed);
 
   $('streak').textContent = streak;
   $('best').textContent = best;
   $('nudges').textContent = week.nudgeCount;
+  $('nudgesLabel').textContent = week.nudgeCount === 1 ? 'nudge so far' : 'nudges so far';
 
   renderHistory(state.history);
 
@@ -274,15 +303,133 @@ const ZONES = [
   'Australia/Sydney', 'UTC',
 ];
 
-const SETTING_FIELDS = ['tz', 'url', 'stakesOn', 'amount', 'recipient', 'holidayHandling', 'holidayCountry'];
-let settingsDirty = false;
+const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-// One delegated listener. `change` matters as well as `input` because some
-// browsers only fire `change` for <select>.
+// Settings save themselves. Choices (switches, the holiday options, the
+// stepper) save at once; typed fields save a moment after the typing stops.
+// While a change is unsaved the minute poll leaves the form alone, so it can
+// never overwrite half-typed input.
+let settingsDirty = false;
+let saveTimer = null;
+
+function settingsPatch() {
+  return {
+    timezone: $('tz').value,
+    timesheet_url: $('url').value.trim(),
+    stakes_enabled: $('stakesOn').checked ? '1' : '0',
+    stakes_amount: String(Math.max(0, Math.round(Number($('amount').value) || 0))),
+    stakes_recipient: $('recipient').value.trim(),
+    holiday_handling: document.querySelector('input[name="holidayHandling"]:checked')?.value || 'soften',
+    holiday_country: $('holidayCountry').value.trim().toUpperCase(),
+  };
+}
+
+function markSaved(text) {
+  $('savedMark').textContent = text;
+}
+
+async function saveSettings() {
+  clearTimeout(saveTimer);
+  markSaved('Saving…');
+  try {
+    await api('/api/settings', { method: 'POST', body: JSON.stringify(settingsPatch()) });
+    // Only drop the dirty flag once the values are actually stored, so a
+    // failed save cannot be quietly overwritten by the poller.
+    settingsDirty = false;
+    markSaved('✓ Saved');
+    await refresh();
+  } catch (e) {
+    markSaved('');
+    const why = {
+      bad_holiday_country: 'The country needs two letters, like US or GB.',
+      bad_stakes_amount: 'The stake needs to be a whole number.',
+      bad_timezone: 'That timezone was not recognised.',
+    }[e.code];
+    ui.toast(why || `Not saved (${e.code || e.status || 'no connection'}). Your changes are still here.`, {
+      kind: 'bad',
+      action: { label: 'Retry', run: saveSettings, countdown: false },
+      seconds: 8,
+    });
+  }
+}
+
+function scheduleSave(delay) {
+  settingsDirty = true;
+  markSaved('');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveSettings, delay);
+}
+
+// Typed fields wait for a pause; everything else saves straight away. Country
+// waits for both letters.
+const TYPED = new Set(['url', 'recipient', 'amount', 'holidayCountry']);
 for (const evt of ['input', 'change']) {
-  document.addEventListener(evt, (e) => {
-    if (e.target && SETTING_FIELDS.includes(e.target.id)) settingsDirty = true;
+  $('settingsPanel').addEventListener(evt, (e) => {
+    const t = e.target;
+    if (!t?.id && t?.name !== 'holidayHandling') return;
+    if (t.id === 'holidayCountry' && t.value.trim().length !== 2) {
+      settingsDirty = true;
+      markSaved('');
+      return;
+    }
+    if (TYPED.has(t.id)) scheduleSave(evt === 'change' ? 0 : 900);
+    else if (evt === 'change') scheduleSave(0);
+    syncSettingsView();
   });
+}
+
+$('settingsPanel').addEventListener('click', (e) => {
+  const step = e.target.closest?.('[data-step]');
+  if (!step) return;
+  const field = $('amount');
+  field.value = String(Math.max(0, (Number(field.value) || 0) + Number(step.dataset.step)));
+  scheduleSave(600);
+});
+
+$('tzChange').onclick = () => {
+  const open = $('tzPick').classList.toggle('hide') === false;
+  $('tzChange').setAttribute('aria-expanded', String(open));
+  if (open) $('tz').focus();
+};
+
+$('tzUseLocal').onclick = () => {
+  $('tz').value = LOCAL_TZ;
+  scheduleSave(0);
+  syncSettingsView();
+};
+
+function holidayHint() {
+  const handling = document.querySelector('input[name="holidayHandling"]:checked')?.value || 'soften';
+  const what = {
+    soften: 'Two gentle reminders, no penalty.',
+    shift: 'Everything runs a working day early.',
+    off: 'Treated as an ordinary Friday.',
+  }[handling];
+  const h = state?.holiday;
+  if (!h?.known) return `${what} Holiday dates load on the next scheduled check.`;
+  if (!h.next) return `${what} No holiday Fridays coming up.`;
+  const date = new Date(`${h.next.date}T12:00:00Z`).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+  return `${what} Next holiday Friday: ${date} (${h.next.name}).`;
+}
+
+// Everything on the panel that follows from the values in it.
+function syncSettingsView() {
+  const tz = $('tz').value;
+  $('tzText').textContent = `Midnight, ${tz.replace(/_/g, ' ')} time`;
+  const differs = LOCAL_TZ && tz !== LOCAL_TZ;
+  $('tzUseLocal').classList.toggle('hide', !differs);
+  $('tzUseLocal').textContent = `Use this phone's timezone (${(LOCAL_TZ || '').replace(/_/g, ' ')})`;
+
+  const url = $('url').value.trim();
+  $('urlTest').classList.toggle('hide', !/^https?:\/\//i.test(url));
+  $('urlTest').href = url || '#';
+
+  $('stakesFields').classList.toggle('hide', !$('stakesOn').checked);
+  $('holidayHint').textContent = holidayHint();
 }
 
 // Built from the ladder the server reports, never from hard-coded text. The
@@ -291,27 +438,23 @@ function fillPreviewStages(ladder) {
   const select = $('previewStage');
   if (!ladder || select.dataset.filled === String(ladder.length)) return;
   const keep = select.value;
-  select.innerHTML = ladder
-    .map((s) => `<option value="${s.id}">${s.clock} — ${s.label}</option>`)
-    .join('');
+  select.replaceChildren(...ladder.map((s) => ui.el('option', { value: s.id }, `${s.clock} — ${s.label}`)));
   select.dataset.filled = String(ladder.length);
   select.value = keep && ladder.some((s) => s.id === keep) ? keep : 'hardstop';
 }
 
 function fillSettings() {
-  const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const zones = [...new Set([state.timezone, local, ...ZONES].filter(Boolean))];
-  $('tz').innerHTML = zones.map((z) => `<option value="${z}">${z}</option>`).join('');
+  const zones = [...new Set([state.timezone, LOCAL_TZ, ...ZONES].filter(Boolean))];
+  $('tz').replaceChildren(...zones.map((z) => ui.el('option', { value: z }, z.replace(/_/g, ' '))));
   $('tz').value = state.timezone;
   $('url').value = state.timesheetUrl || '';
-  $('stakesOn').value = state.stakes.enabled ? '1' : '0';
+  $('stakesOn').checked = state.stakes.enabled;
   $('amount').value = state.stakes.amount;
   $('recipient').value = state.stakes.recipient;
-  $('holidayHandling').value = state.holiday?.handling || 'soften';
+  const handling = state.holiday?.handling || 'soften';
+  for (const r of document.querySelectorAll('input[name="holidayHandling"]')) r.checked = r.value === handling;
   $('holidayCountry').value = state.holiday?.country || 'US';
-  $('holidayHint').textContent = state.holiday?.known
-    ? 'What to do when the Friday is a public holiday.'
-    : 'Holiday data has not been fetched yet — it loads on the next scheduled check.';
+  syncSettingsView();
 }
 
 // ---------------------------------------------------------------- push
@@ -320,7 +463,7 @@ async function updateNotifState() {
   const el = $('notifState');
   if (!('Notification' in window) || !('serviceWorker' in navigator)) {
     el.textContent = 'Not supported';
-    $('notifBanner').classList.remove('hide');
+    $('notifBanner').classList.add('hide');
     return;
   }
   const reg = await navigator.serviceWorker.getRegistration();
@@ -329,21 +472,19 @@ async function updateNotifState() {
   el.textContent = on ? 'On' : Notification.permission === 'denied' ? 'Blocked' : 'Off';
   $('notifBanner').classList.toggle('hide', on);
   $('enableBtn').classList.toggle('hide', on);
-  // Surface the panel automatically while it still needs attention.
-  if (!on) $('notifPanel').open = true;
 }
 
 async function enablePush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    alert('This browser does not support push notifications.');
+    ui.toast('This browser cannot show reminders. Try Safari or Chrome on the phone.', { kind: 'bad' });
     return;
   }
   if (isIOS && !isStandalone) {
-    alert('On iPhone: tap Share → Add to Home Screen, then open the app from there and try again.');
+    ui.toast('On iPhone, add this to the Home Screen first: Share → Add to Home Screen.', { kind: 'info', seconds: 8 });
     return;
   }
   if ((await Notification.requestPermission()) !== 'granted') {
-    alert('Notifications were not granted. The app cannot remind you without them.');
+    ui.toast('Reminders were not allowed. Turn them on in the phone settings for this app.', { kind: 'bad', seconds: 8 });
     return;
   }
 
@@ -352,7 +493,7 @@ async function enablePush() {
 
   const { key } = await api('/api/vapid');
   if (!key) {
-    alert('Server is missing its VAPID keys.');
+    ui.toast('The server is missing its notification keys.', { kind: 'bad' });
     return;
   }
 
@@ -369,7 +510,11 @@ async function enablePush() {
     body: JSON.stringify({ subscription: sub.toJSON(), label: navigator.userAgent.slice(0, 80) }),
   });
   await updateNotifState();
-  alert('Notifications are on. Try the preview to see what Friday looks like.');
+  ui.toast('Reminders are on for this phone.', {
+    kind: 'ok',
+    action: { label: 'Send a test', run: sendTest, countdown: false },
+    seconds: 8,
+  });
 }
 
 // ---------------------------------------------------------------- wiring
@@ -406,93 +551,106 @@ $('code').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') $('loginBtn').click();
 });
 
-$('confirmBtn').onclick = async () => {
+async function confirmSubmitted() {
   $('confirmBtn').disabled = true;
   const before = { streak: Number($('streak').textContent) };
   try {
     state = await api('/api/confirm', { method: 'POST', body: '{}' });
     render();
     window.release?.play(before);
+    // A mis-tap is undone right here, without a second question.
+    ui.toast('Recorded. Reminders stopped.', {
+      kind: 'ok',
+      action: { label: 'Undo', run: () => reopenWeek() },
+      seconds: 8,
+    });
   } catch (e) {
     // A confirm she believes landed but did not is the single worst failure
     // this app can have: the reminders stop in her head, not on the server.
-    alert(
-      `Could not record it (${e.code || e.status || 'no connection'}).\n\n` +
-        'The week is still open. Try again once you are back online.'
-    );
+    ui.toast(`Not recorded (${e.code || e.status || 'no connection'}). The week is still open.`, {
+      kind: 'bad',
+      action: { label: 'Retry', run: confirmSubmitted, countdown: false },
+      seconds: 15,
+    });
   } finally {
     $('confirmBtn').disabled = false;
   }
-};
+}
 
+async function reopenWeek() {
+  try {
+    state = await api('/api/unconfirm', { method: 'POST', body: '{}' });
+    render();
+    ui.toast('Week reopened. Reminders will start again.', { kind: 'info' });
+  } catch (e) {
+    ui.toast(`Could not reopen the week (${e.code || e.status || 'no connection'}).`, { kind: 'bad' });
+  }
+}
+
+async function sendTest() {
+  try {
+    const { delivered, configured } = await api('/api/test-push', { method: 'POST', body: '{}' });
+    if (!configured) ui.toast('The server is missing its notification keys.', { kind: 'bad' });
+    else if (!delivered) ui.toast('No phone is set up yet. Turn reminders on first.', { kind: 'info' });
+    else ui.toast('Test sent. It should arrive in a few seconds.', { kind: 'ok' });
+  } catch (e) {
+    ui.toast(`Could not send (${e.code || e.status || 'no connection'}).`, { kind: 'bad' });
+  }
+}
+
+$('confirmBtn').onclick = confirmSubmitted;
+
+// Outside the few seconds after confirming, undo asks first: reopening a
+// week starts the reminders again.
 $('undoBtn').onclick = async () => {
-  if (!confirm('Reopen this week? The reminders start again.')) return;
-  state = await api('/api/unconfirm', { method: 'POST', body: '{}' });
-  render();
+  const yes = await ui.ask({
+    title: 'Reopen this week?',
+    body: 'The reminders start again until you confirm.',
+    ok: 'Reopen it',
+    cancel: 'Keep it done',
+  });
+  if (yes) reopenWeek();
 };
 
 $('enableBtn').onclick = enablePush;
-
-$('testBtn').onclick = async () => {
-  const { delivered, configured } = await api('/api/test-push', { method: 'POST', body: '{}' });
-  if (!configured) alert('Server has no VAPID keys.');
-  else if (!delivered) alert('No devices registered yet — enable notifications first.');
-};
+$('notifTurnOn').onclick = enablePush;
+$('testBtn').onclick = sendTest;
 
 $('previewBtn').onclick = async () => {
-  const msg = $('previewMsg');
-  msg.classList.remove('hide');
   try {
     const { delivered } = await api('/api/preview', {
       method: 'POST',
       body: JSON.stringify({ stage: $('previewStage').value }),
     });
-    msg.textContent = delivered
-      ? `Sent to ${delivered} device${delivered === 1 ? '' : 's'}.`
-      : 'No devices registered yet — enable notifications first.';
+    ui.toast(
+      delivered
+        ? `Sent to ${delivered} phone${delivered === 1 ? '' : 's'}.`
+        : 'No phone is set up yet. Turn reminders on first.',
+      { kind: delivered ? 'ok' : 'info' }
+    );
   } catch (e) {
-    msg.textContent = `Could not send (${e.code || e.status || 'network error'}).`;
+    ui.toast(`Could not send (${e.code || e.status || 'network error'}).`, { kind: 'bad' });
   }
-  setTimeout(() => msg.classList.add('hide'), 5000);
 };
 
 $('resetBtn').onclick = async () => {
-  if (!confirm('Delete all week history and stakes? Settings and devices are kept.')) return;
-  const { removed } = await api('/api/reset', {
-    method: 'POST',
-    body: JSON.stringify({ confirm: 'RESET' }),
+  const yes = await ui.ask({
+    title: 'Delete all history?',
+    body: 'Every week and every stake is removed. Settings and phones are kept. This cannot be undone.',
+    ok: 'Delete history',
+    danger: true,
   });
-  alert(`Cleared ${removed} record${removed === 1 ? '' : 's'}.`);
-  await refresh();
-};
-
-$('saveBtn').onclick = async () => {
-  const saved = $('saved');
+  if (!yes) return;
   try {
-    await api('/api/settings', {
+    const { removed } = await api('/api/reset', {
       method: 'POST',
-      body: JSON.stringify({
-        timezone: $('tz').value,
-        timesheet_url: $('url').value.trim(),
-        stakes_enabled: $('stakesOn').value,
-        stakes_amount: $('amount').value,
-        stakes_recipient: $('recipient').value.trim(),
-        holiday_handling: $('holidayHandling').value,
-        holiday_country: $('holidayCountry').value.trim().toUpperCase(),
-      }),
+      body: JSON.stringify({ confirm: 'RESET' }),
     });
-    // Only drop the dirty flag once the values are actually stored. Clearing
-    // it first meant a failed save let the poller quietly overwrite the form.
-    settingsDirty = false;
-    saved.textContent = 'Saved.';
-    saved.className = 'notice notice-ok';
+    ui.toast(`Cleared ${removed} record${removed === 1 ? '' : 's'}.`, { kind: 'ok' });
     await refresh();
   } catch (e) {
-    saved.textContent = `Not saved (${e.code || e.status || 'no connection'}). Your changes are still here.`;
-    saved.className = 'notice notice-bad';
+    ui.toast(`Could not clear history (${e.code || e.status || 'no connection'}).`, { kind: 'bad' });
   }
-  saved.classList.remove('hide');
-  setTimeout(() => saved.classList.add('hide'), 4000);
 };
 
 $('logout').onclick = async (e) => {
