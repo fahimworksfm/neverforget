@@ -41,7 +41,8 @@ import {
   type Week,
 } from './store.mjs';
 import { sendTo, pushConfigured } from './push.mjs';
-import { ensureCache, resolveHoliday } from '../../lib/holidays.js';
+import { ensureCache, resolveHoliday, nextHolidayFriday } from '../../lib/holidays.js';
+import { nudgeAvailableAt } from '../../lib/nudge.js';
 
 export async function buildState(role: string) {
   const settings = await getSettings();
@@ -58,6 +59,7 @@ export async function buildState(role: string) {
 
   const hoursLeft = hoursUntilDeadline(weekKey, tz, now, holiday.shiftDays);
   const minutes = minutesIntoDueDay(weekKey, tz, now, holiday.shiftDays);
+  const stakeFor = new Map(stakes.map((s) => [s.week_key, s]));
 
   return {
     role,
@@ -84,6 +86,7 @@ export async function buildState(role: string) {
       handling: settings.holiday_handling,
       country: settings.holiday_country,
       known: Boolean(cache),
+      next: nextHolidayFriday(cache, dueDateFor(weekKey, 0).iso),
     },
     pressure: pressureLevel(week, { minutes, hoursLeft, soften: holiday.soften }),
     streak: currentStreak(weeks),
@@ -95,6 +98,12 @@ export async function buildState(role: string) {
       onTime: w.on_time === 1,
       nudgeCount: w.nudge_count,
       holiday: (w as any).holiday_name || null,
+      confirmedAt: w.confirmed_at,
+      missedAt: w.missed_at,
+      streakLost: w.streak_lost,
+      stake: stakeFor.has(w.week_key)
+        ? { amount: stakeFor.get(w.week_key)!.amount, status: stakeFor.get(w.week_key)!.status }
+        : null,
     })),
     stakes: {
       enabled: settings.stakes_enabled === '1',
@@ -104,6 +113,7 @@ export async function buildState(role: string) {
       ledger: stakes.map((s) => ({ week: s.week_key, amount: s.amount, status: s.status })),
     },
     names: { owner: settings.owner_name, partner: settings.partner_name },
+    nudge: { availableAt: nudgeAvailableAt(await getFlag('manual_nudge'), now.getTime()) },
     timesheetUrl: settings.timesheet_url,
     devices: {
       owner: (await getSubs('owner')).length,
@@ -175,6 +185,30 @@ export async function unconfirmWeek() {
   const overdue = hoursUntilDeadline(weekKey, tz, now, holiday.shiftDays) <= 0;
   const status: Week['status'] = !overdue ? 'pending' : holiday.soften ? 'skipped' : 'missed';
   await updateWeek(weekKey, (w) => ({ ...w, status, confirmed_at: null, on_time: null }));
+}
+
+// A past week she missed that was really a day off. Turns the miss into a
+// skipped week -- neutral for the streak -- and drops any stake still owed.
+// A stake already settled stays on the ledger: that money has moved.
+export async function markWeekHoliday(weekKey: string) {
+  const week = await getWeek(weekKey);
+  if (!week) return { error: 'not_found' as const };
+  if (week.status !== 'missed') return { error: 'not_missed' as const };
+  await updateWeek(
+    weekKey,
+    (w) => ({
+      ...w,
+      status: 'skipped',
+      on_time: null,
+      streak_lost: null,
+      holiday_name: w.holiday_name || 'Marked as a holiday',
+    }),
+    (w) => w.status === 'missed',
+    { createIfMissing: false }
+  );
+  const owed = (await getStakes()).find((s) => s.week_key === weekKey && s.status === 'owed');
+  if (owed) await dropStake(weekKey);
+  return { ok: true as const };
 }
 
 function minutesSince(iso: string | null, now: Date): number {

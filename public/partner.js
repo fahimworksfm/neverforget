@@ -100,22 +100,13 @@ function render() {
     ?.setAttribute('content', getComputedStyle(document.body).getPropertyValue('--bg').trim());
   $('pressurePill').textContent = pressure.label;
 
-  $('nudgeBtn').classList.toggle('hide', mode === 'done' || mode === 'holiday');
+  $('nudgeBox').classList.toggle('hide', mode === 'done' || mode === 'holiday');
+  renderNudge();
   $('streak').textContent = streak;
   $('best').textContent = best;
   $('nudges').textContent = week.nudgeCount;
 
-  $('weeks').innerHTML = state.history
-    .map((w) => {
-      const s = w.status === 'confirmed' ? (w.onTime ? 'ontime' : 'late') : w.status;
-      return `<div class="hbar" data-s="${s}" title="${w.label} — ${s}"></div>`;
-    })
-    .join('');
-  const short = (l) => (l || '').replace(/^\w+,\s*/, '');
-  $('histFrom').textContent = state.history.length ? short(state.history[0].label) : '';
-  $('histTo').textContent = state.history.length
-    ? short(state.history[state.history.length - 1].label)
-    : '';
+  ui.renderWeeks($('weeks'), state.history, (w) => ui.weekSheet(w));
 
   const owed = stakes.ledger.filter((s) => s.status === 'owed');
   $('stakesCard').classList.toggle('hide', !stakes.enabled);
@@ -132,8 +123,13 @@ function render() {
 
   for (const btn of document.querySelectorAll('[data-settle]')) {
     btn.onclick = async () => {
-      state = await api(`/api/stakes/${btn.dataset.settle}/settle`, { method: 'POST', body: '{}' });
-      render();
+      try {
+        state = await api(`/api/stakes/${btn.dataset.settle}/settle`, { method: 'POST', body: '{}' });
+        render();
+        ui.toast('Marked as settled.', { kind: 'ok' });
+      } catch (e) {
+        ui.toast(`Could not settle (${e.error || e.status || 'no connection'}).`, { kind: 'bad' });
+      }
     };
   }
 
@@ -162,15 +158,18 @@ async function updateNotifState() {
 
 async function enablePush() {
   if (isIOS && !isStandalone) {
-    alert('On iPhone: tap Share → Add to Home Screen, then open it from there.');
+    ui.toast('On iPhone, add this to the Home Screen first: Share → Add to Home Screen.', { kind: 'info', seconds: 8 });
     return;
   }
-  if ((await Notification.requestPermission()) !== 'granted') return;
+  if ((await Notification.requestPermission()) !== 'granted') {
+    ui.toast('Notifications were not allowed. Turn them on in the phone settings for this app.', { kind: 'bad', seconds: 8 });
+    return;
+  }
   const reg = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
   const { key } = await api('/api/vapid');
   if (!key) {
-    alert('Server is missing VAPID keys.');
+    ui.toast('The server is missing its notification keys.', { kind: 'bad' });
     return;
   }
   let sub = await reg.pushManager.getSubscription();
@@ -185,6 +184,7 @@ async function enablePush() {
     body: JSON.stringify({ subscription: sub.toJSON(), label: navigator.userAgent.slice(0, 80) }),
   });
   await updateNotifState();
+  ui.toast('Notifications are on for this phone.', { kind: 'ok' });
 }
 
 $('loginBtn').onclick = async () => {
@@ -218,22 +218,77 @@ $('code').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') $('loginBtn').click();
 });
 
-$('nudgeBtn').onclick = async () => {
-  const msg = $('nudgeMsg');
-  msg.classList.remove('hide');
-  try {
-    const { delivered } = await api('/api/nudge', { method: 'POST', body: '{}' });
-    msg.textContent = delivered ? 'Nudge sent.' : 'No devices registered on her side yet.';
-  } catch (err) {
-    msg.textContent =
-      err.error === 'rate_limited'
-        ? `Already nudged recently — try again in ${err.retryInMinutes} min.`
-        : err.error === 'already_confirmed'
-          ? 'She already submitted it.'
-          : 'Could not send.';
-  }
-  setTimeout(() => msg.classList.add('hide'), 4000);
+// ------------------------------------------------------------------ nudge
+//
+// The partner picks a tone or writes their own line, sees exactly what will
+// land on her lock screen, and sees when the next nudge is allowed before
+// tapping rather than after being refused.
+
+const TONES = {
+  friendly: 'Timesheet? Two minutes and the weekend is ours.',
+  firm: 'Still not submitted. Please do it now. It takes two minutes.',
 };
+let tone = 'friendly';
+
+function nudgeMessage() {
+  return tone === 'own' ? $('nudgeText').value.trim() || TONES.friendly : TONES[tone];
+}
+
+function renderNudge() {
+  if (!state) return;
+  for (const chip of document.querySelectorAll('[data-tone]')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.tone === tone));
+  }
+  $('nudgeOwn').classList.toggle('hide', tone !== 'own');
+  $('nudgeTitle').textContent = `A nudge from ${state.names?.partner || 'your partner'}`;
+  $('nudgePreview').textContent = nudgeMessage();
+  $('nudgeLands').textContent = `This is what lands on ${state.names.owner}'s phone.`;
+
+  const at = state.nudge?.availableAt ? new Date(state.nudge.availableAt) : null;
+  const waiting = at && at.getTime() > Date.now();
+  $('nudgeBtn').disabled = Boolean(waiting);
+  $('nudgeBtn').textContent = waiting ? 'Nudge sent recently' : 'Send nudge';
+  $('nudgeWhen').textContent = waiting
+    ? `One nudge an hour. The next one is available at ${at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}.`
+    : 'One nudge an hour.';
+}
+
+for (const chip of document.querySelectorAll('[data-tone]')) {
+  chip.onclick = () => {
+    tone = chip.dataset.tone;
+    renderNudge();
+    if (tone === 'own') $('nudgeText').focus();
+  };
+}
+$('nudgeText').addEventListener('input', renderNudge);
+
+$('nudgeBtn').onclick = async () => {
+  $('nudgeBtn').disabled = true;
+  try {
+    const { delivered } = await api('/api/nudge', {
+      method: 'POST',
+      body: JSON.stringify({ message: nudgeMessage() }),
+    });
+    ui.toast(
+      delivered ? 'Nudge sent.' : `Sent, but ${state.names.owner} has no phone set up for reminders yet.`,
+      { kind: delivered ? 'ok' : 'info' }
+    );
+    await refresh();
+  } catch (err) {
+    ui.toast(
+      err.error === 'rate_limited'
+        ? `Already nudged recently. Try again in ${err.retryInMinutes} min.`
+        : err.error === 'already_confirmed'
+          ? `${state.names.owner} already submitted it.`
+          : 'Could not send.',
+      { kind: err.error === 'already_confirmed' ? 'info' : 'bad' }
+    );
+    await refresh().catch(() => {});
+  }
+};
+
+// Re-check the cooldown each minute so the button frees itself on time.
+setInterval(renderNudge, 30_000);
 
 $('reveal').onclick = () => {
   const f = $('code');
@@ -245,8 +300,9 @@ $('reveal').onclick = () => {
 $('enableBtn').onclick = enablePush;
 $('testBtn').onclick = async () => {
   const { delivered, configured } = await api('/api/test-push', { method: 'POST', body: '{}' });
-  if (!configured) alert('Server has no VAPID keys.');
-  else if (!delivered) alert('Enable notifications on this device first.');
+  if (!configured) ui.toast('The server is missing its notification keys.', { kind: 'bad' });
+  else if (!delivered) ui.toast('Turn notifications on for this phone first.', { kind: 'info' });
+  else ui.toast('Test sent. It should arrive in a few seconds.', { kind: 'ok' });
 };
 $('logout').onclick = async (e) => {
   e.preventDefault();

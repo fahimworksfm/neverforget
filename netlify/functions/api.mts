@@ -24,7 +24,8 @@ import {
   clearHistory,
 } from '../lib/store.mjs';
 import { publicKey, pushConfigured, sendTo } from '../lib/push.mjs';
-import { buildState, confirmWeek, unconfirmWeek, runTick } from '../lib/core.mjs';
+import { buildState, confirmWeek, unconfirmWeek, runTick, markWeekHoliday } from '../lib/core.mjs';
+import { NUDGE_COOLDOWN_MS, cleanNudgeMessage, WEEK_KEY } from '../../lib/nudge.js';
 import { weekKeyFor } from '../../lib/week.js';
 import { PREVIEWABLE } from '../../lib/escalation.js';
 import { validateSettingsPatch } from '../../lib/settings.js';
@@ -120,7 +121,7 @@ export default async (req: Request) => {
   // without this a bare link to /api/confirm would silently close her week.
   // The Express target gets this free from app.post(); this is the parity fix.
   const MUTATING =
-    /^(confirm|unconfirm|subscribe|unsubscribe|nudge|test-push|tick|preview|reset|stakes\/[\d-]+\/settle)$/;
+    /^(confirm|unconfirm|subscribe|unsubscribe|nudge|test-push|tick|preview|reset|stakes\/[\d-]+\/settle|weeks\/[\d-]+\/holiday)$/;
   if (MUTATING.test(route) && req.method !== 'POST') {
     return json({ error: 'method_not_allowed' }, 405);
   }
@@ -178,8 +179,8 @@ export default async (req: Request) => {
       if (role !== 'partner') return json({ error: 'forbidden' }, 403);
       const last = await getFlag('manual_nudge');
       const since = Date.now() - last;
-      if (since < 3_600_000) {
-        return json({ error: 'rate_limited', retryInMinutes: Math.ceil((3_600_000 - since) / 60_000) }, 429);
+      if (since < NUDGE_COOLDOWN_MS) {
+        return json({ error: 'rate_limited', retryInMinutes: Math.ceil((NUDGE_COOLDOWN_MS - since) / 60_000) }, 429);
       }
       const settings = await getSettings();
       const weekKey = weekKeyFor(new Date(), settings.timezone, Number(settings.grace_days));
@@ -191,7 +192,7 @@ export default async (req: Request) => {
         tag: `timesheet-${weekKey}`,
         renotify: true,
         title: `A nudge from ${settings.partner_name}`,
-        body: 'The timesheet is still showing as unsubmitted.',
+        body: cleanNudgeMessage((body as any).message),
         urgency: 'high',
         requireInteraction: true,
         stage: 'manual',
@@ -256,6 +257,15 @@ export default async (req: Request) => {
       const m = route.match(/^stakes\/([\d-]+)\/settle$/);
       if (m && req.method === 'POST') {
         await settleStake(m[1], Boolean((body as any).waive));
+        return json({ ok: true, ...(await buildState(role)) });
+      }
+      // /api/weeks/<week>/holiday -- turn a past miss into a day off.
+      const h = route.match(/^weeks\/([\d-]+)\/holiday$/);
+      if (h && req.method === 'POST') {
+        if (!ownerOnly()) return json({ error: 'forbidden' }, 403);
+        if (!WEEK_KEY.test(h[1])) return json({ error: 'bad_week' }, 400);
+        const result = await markWeekHoliday(h[1]);
+        if ('error' in result) return json(result, result.error === 'not_found' ? 404 : 409);
         return json({ ok: true, ...(await buildState(role)) });
       }
       return json({ error: 'not_found', route }, 404);

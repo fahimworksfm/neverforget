@@ -42,17 +42,17 @@
     <div id="pressurePill" class="status">—</div>
   </header>
 
-  <div id="notifBanner" class="notice notice-info hide">
-    Notifications are off. Without them this app cannot do its job —
-    <b>turn them on below.</b>
+  <div id="notifBanner" class="notice-row hide">
+    <span>Reminders are off on this phone</span>
+    <button id="notifTurnOn" class="btn btn-primary btn-compact" type="button">Turn on</button>
   </div>
 
-  <div id="iosBanner" class="notice notice-info hide">
-    On iPhone, push only works once this is on the Home Screen.
+  <div id="iosBanner" class="notice hide">
+    On iPhone, reminders only work from the Home Screen.
     Tap <b>Share → Add to Home Screen</b>, then open it from there.
   </div>
 
-  <div id="holidayBanner" class="notice notice-info hide"></div>
+  <div id="holidayBanner" class="notice hide"></div>
 
   <section class="hero">
     <div class="ring">
@@ -70,23 +70,35 @@
     <p class="hero-sub" id="heroSub">—</p>
   </section>
 
-  <div class="actions">
-    <button id="confirmBtn" class="btn btn-primary">I submitted my timesheet</button>
-    <a id="openSheet" class="btn btn-ghost hide" href="#" target="_blank" rel="noopener">Open the timesheet</a>
-    <button id="undoBtn" class="btn btn-quiet hide">Undo — I have not actually submitted it</button>
+  <div class="actions steps" id="steps">
+    <a id="openSheet" class="step step-link hide" href="#" target="_blank" rel="noopener">
+      <span class="step-n" aria-hidden="true">1</span>
+      <span class="step-text">
+        <span class="step-title">Open the timesheet</span>
+        <span class="step-hint">Fill it in and submit it there</span>
+      </span>
+      <svg class="step-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"></path></svg>
+    </a>
+    <button id="confirmBtn" class="step step-confirm" type="button">
+      <span class="step-n" aria-hidden="true">2</span>
+      <span class="step-text">
+        <span class="step-title">I submitted it</span>
+        <span class="step-hint">Stops every reminder this week</span>
+      </span>
+    </button>
+    <button id="undoBtn" class="btn btn-quiet hide" type="button">Undo — I have not actually submitted it</button>
   </div>
 
   <div class="metrics">
-    <div class="metric"><span class="metric-n" id="streak">0</span><span class="metric-k">Streak</span></div>
-    <div class="metric"><span class="metric-n" id="best">0</span><span class="metric-k">Best</span></div>
-    <div class="metric"><span class="metric-n" id="nudges">0</span><span class="metric-k">Nudges</span></div>
+    <div class="metric"><span class="metric-n" id="streak">0</span><span class="metric-k">week streak</span></div>
+    <div class="metric"><span class="metric-n" id="best">0</span><span class="metric-k">best streak</span></div>
+    <div class="metric"><span class="metric-n" id="nudges">0</span><span class="metric-k" id="nudgesLabel">nudges so far</span></div>
   </div>
 
   <section class="panel">
     <h2 class="panel-title">Last 12 weeks</h2>
     <div class="history" id="weeks"></div>
-    <div class="history-axis"><span id="histFrom">—</span><span id="histTo">—</span></div>
-    <div class="legend">A green tick is a week submitted on time.</div>
+    <div class="legend">Tap a week to see what happened. A green tick is a week submitted on time.</div>
   </section>
 
   <section class="panel hide" id="stakesCard">
@@ -96,19 +108,85 @@
     <div class="row"><span class="row-k">Goes to</span><span class="row-v" id="stakeTo">—</span></div>
   </section>
 
+  <details class="panel" id="settingsPanel">
+    <summary>Settings <span class="saved-mark" id="savedMark" aria-live="polite"></span></summary>
+    <div class="panel-body">
+
+      <div class="field">
+        <span class="field-label">Deadline</span>
+        <div class="field-line">
+          <span id="tzText">Midnight</span>
+          <button id="tzChange" class="btn btn-sm" type="button" aria-expanded="false" aria-controls="tzPick">Change</button>
+        </div>
+        <button id="tzUseLocal" class="btn btn-sm hide" type="button"></button>
+        <div id="tzPick" class="hide">
+          <label for="tz" class="visually-hidden">Timezone</label>
+          <select id="tz"></select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="url">Timesheet link</label>
+        <div class="field-line">
+          <input id="url" type="url" inputmode="url" placeholder="https://…">
+          <a id="urlTest" class="btn btn-sm hide" href="#" target="_blank" rel="noopener">Test it</a>
+        </div>
+        <div class="hint">Opens straight from step 1 and from every reminder.</div>
+      </div>
+
+      <fieldset class="field">
+        <legend>If Friday is a public holiday</legend>
+        <div class="segmented">
+          <label><input type="radio" name="holidayHandling" value="soften"><span>Go easy</span></label>
+          <label><input type="radio" name="holidayHandling" value="shift"><span>Day before</span></label>
+          <label><input type="radio" name="holidayHandling" value="off"><span>Ignore</span></label>
+        </div>
+        <div class="hint" id="holidayHint"></div>
+        <div class="field-line field-line-start">
+          <label for="holidayCountry" class="inline-label">Country</label>
+          <input id="holidayCountry" class="input-short" type="text" maxlength="2" placeholder="US"
+                 autocapitalize="characters" autocorrect="off" spellcheck="false">
+        </div>
+      </fieldset>
+
+      <div class="field">
+        <label class="switch-row" for="stakesOn">
+          <span>Stakes</span>
+          <input id="stakesOn" type="checkbox" role="switch">
+        </label>
+        <div id="stakesFields">
+          <div class="field-line">
+            <span class="inline-label" id="amountLabel">Per missed week</span>
+            <div class="stepper" role="group" aria-labelledby="amountLabel">
+              <button type="button" class="stepper-btn" data-step="-5" aria-label="Five dollars less">−</button>
+              <input id="amount" type="number" min="0" step="1" inputmode="numeric" aria-labelledby="amountLabel">
+              <button type="button" class="stepper-btn" data-step="5" aria-label="Five dollars more">+</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="recipient">Paid to</label>
+            <input id="recipient" type="text">
+          </div>
+        </div>
+      </div>
+
+      <p class="hint">Changes save as you make them.</p>
+    </div>
+  </details>
+
   <details class="panel" id="notifPanel">
     <summary>Notifications</summary>
     <div class="panel-body">
-      <div class="row"><span class="row-k">This device</span><span class="row-v" id="notifState">—</span></div>
+      <div class="row"><span class="row-k">This phone</span><span class="row-v" id="notifState">—</span></div>
       <div class="actions" style="margin:15px 0 0">
-        <button id="enableBtn" class="btn btn-ghost">Enable on this device</button>
-        <button id="testBtn" class="btn btn-quiet">Send a test notification</button>
+        <button id="enableBtn" class="btn" type="button">Turn on for this phone</button>
+        <button id="testBtn" class="btn btn-quiet" type="button">Send a test notification</button>
       </div>
     </div>
   </details>
 
   <details class="panel">
-    <summary>Try it out</summary>
+    <summary>Testing tools</summary>
     <div class="panel-body">
       <p class="hint" style="margin:0 0 14px">
         Fires a real notification for any point in Friday's ladder, without
@@ -119,8 +197,7 @@
         <label for="previewStage">Which moment</label>
         <select id="previewStage"></select>
       </div>
-      <button id="previewBtn" class="btn btn-ghost" style="margin-top:13px">Send this notification</button>
-      <div id="previewMsg" class="notice notice-info hide" style="margin:11px 0 0"></div>
+      <button id="previewBtn" class="btn" type="button" style="margin-top:13px">Send this notification</button>
 
       <div class="divider"></div>
       <p class="hint" style="margin:0 0 12px">
@@ -128,65 +205,14 @@
         this once before handing the app over, so no streak is built out of
         test runs.
       </p>
-      <button id="resetBtn" class="btn btn-danger">Reset history</button>
-    </div>
-  </details>
-
-  <details class="panel">
-    <summary>Settings</summary>
-    <div class="panel-body">
-      <div class="field">
-        <label for="tz">Timezone</label>
-        <select id="tz"></select>
-        <div class="hint">The Friday deadline is midnight in this zone.</div>
-      </div>
-      <div class="field">
-        <label for="url">Timesheet link</label>
-        <input id="url" type="url" inputmode="url" placeholder="https://…">
-        <div class="hint">Optional. Opens straight from the notification. Leave
-          blank if the timesheet will not load on a phone.</div>
-      </div>
-      <div class="field">
-        <label for="holidayHandling">Public holidays</label>
-        <select id="holidayHandling">
-          <option value="soften">Go easy — a couple of reminders, no penalty</option>
-          <option value="shift">Timesheet is due the working day before</option>
-          <option value="off">Ignore holidays entirely</option>
-        </select>
-        <div class="hint" id="holidayHint">
-          What to do when the Friday is a public holiday.
-        </div>
-      </div>
-      <div class="field">
-        <label for="holidayCountry">Holiday calendar</label>
-        <input id="holidayCountry" type="text" maxlength="2" placeholder="US"
-               autocapitalize="characters" autocorrect="off" spellcheck="false">
-        <div class="hint">Two-letter country code, e.g. US, GB, CA, AU.</div>
-      </div>
-
-      <div class="field">
-        <label for="stakesOn">Stakes</label>
-        <select id="stakesOn">
-          <option value="0">Off</option>
-          <option value="1">On</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="amount">Amount per missed week</label>
-        <input id="amount" type="number" min="0" step="1">
-      </div>
-      <div class="field">
-        <label for="recipient">Paid to</label>
-        <input id="recipient" type="text">
-      </div>
-      <button id="saveBtn" class="btn btn-ghost" style="margin-top:17px">Save settings</button>
-      <div id="saved" class="notice notice-ok hide" style="margin:11px 0 0">Saved.</div>
+      <button id="resetBtn" class="btn btn-danger" type="button">Reset history</button>
     </div>
   </details>
 
   <div class="foot"><a href="#" id="logout">Sign out</a></div>
 </div>
 
+<script src="/ui.js"></script>
 <script src="/release.js"></script>
 <script src="/app.js"></script>
 </body>

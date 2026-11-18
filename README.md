@@ -90,6 +90,24 @@ Each ground is lit from behind the ring and darkens toward the bottom, the
 ring glows in its own colour, and the light breathes slowly (held still with
 reduced motion). Buttons, cards and fields are soft and rounded.
 
+### Using it
+
+- **Two steps on the home screen.** Step 1 opens the timesheet, step 2 is
+  *I submitted it*. A line under the ring says when the next reminder lands.
+- **Messages, not pop-ups.** Everything the app says appears as a message in
+  its own style (`public/ui.js`). For a few seconds after confirming, *Undo*
+  needs no second question; after that it asks first.
+- **Tap a week** in the 12-week record to see reminders sent, when it was
+  submitted, and its stake. A missed week that was really a day off can be
+  marked as a holiday (`POST /api/weeks/<friday>/holiday`): it becomes neutral
+  for the streak and any stake still owed is dropped; a settled one stays.
+- **Settings save themselves.** The timezone defaults to the phone's, the
+  holiday choice names the next holiday Friday, and testing tools live in
+  their own section.
+- **The partner's nudge** can be friendly, firm or their own words (up to 140
+  characters), with a preview of exactly what lands on her phone and the time
+  the next one is allowed.
+
 Preview any colour with `?mood=0` … `?mood=5`, or `?mood=done`.
 
 Confirming plays a short release (`public/release.js`), and only once the

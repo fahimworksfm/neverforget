@@ -38,7 +38,7 @@
     <div id="pressurePill" class="status">—</div>
   </header>
 
-  <div id="iosBanner" class="notice notice-info hide">
+  <div id="iosBanner" class="notice hide">
     On iPhone, push only works once this is on the Home Screen.
     Tap <b>Share → Add to Home Screen</b>.
   </div>
@@ -56,22 +56,39 @@
     <p class="hero-sub" id="heroSub">—</p>
   </section>
 
-  <div class="actions">
-    <button id="nudgeBtn" class="btn btn-primary">Send a nudge</button>
-  </div>
-  <div id="nudgeMsg" class="notice notice-info hide"></div>
+  <section class="panel nudge" id="nudgeBox">
+    <h2 class="panel-title">Your nudge</h2>
+    <div class="chips" role="group" aria-label="Kind of nudge">
+      <button type="button" class="chip" data-tone="friendly" aria-pressed="true">Friendly</button>
+      <button type="button" class="chip" data-tone="firm" aria-pressed="false">Firm</button>
+      <button type="button" class="chip" data-tone="own" aria-pressed="false">Write my own</button>
+    </div>
+    <div id="nudgeOwn" class="field hide">
+      <label for="nudgeText">Your message</label>
+      <textarea id="nudgeText" rows="2" maxlength="140" placeholder="Say it your way"></textarea>
+    </div>
+    <div class="preview-card" aria-label="Preview of the notification">
+      <div class="preview-icon" aria-hidden="true">!</div>
+      <div class="preview-text">
+        <span class="preview-title" id="nudgeTitle">A nudge from you</span>
+        <span id="nudgePreview">—</span>
+      </div>
+    </div>
+    <p class="hint" id="nudgeLands">This is what lands on her phone.</p>
+    <button id="nudgeBtn" class="btn btn-primary" type="button">Send nudge</button>
+    <p class="hint nudge-when" id="nudgeWhen">One nudge an hour.</p>
+  </section>
 
   <div class="metrics">
-    <div class="metric"><span class="metric-n" id="streak">0</span><span class="metric-k">Streak</span></div>
-    <div class="metric"><span class="metric-n" id="best">0</span><span class="metric-k">Best</span></div>
-    <div class="metric"><span class="metric-n" id="nudges">0</span><span class="metric-k">Nudges</span></div>
+    <div class="metric"><span class="metric-n" id="streak">0</span><span class="metric-k">week streak</span></div>
+    <div class="metric"><span class="metric-n" id="best">0</span><span class="metric-k">best streak</span></div>
+    <div class="metric"><span class="metric-n" id="nudges">0</span><span class="metric-k">nudges this week</span></div>
   </div>
 
   <section class="panel">
     <h2 class="panel-title">Last 12 weeks</h2>
     <div class="history" id="weeks"></div>
-    <div class="history-axis"><span id="histFrom">—</span><span id="histTo">—</span></div>
-    <div class="legend">A green tick is a week submitted on time.</div>
+    <div class="legend">Tap a week to see what happened. A green tick is a week submitted on time.</div>
   </section>
 
   <section class="panel hide" id="stakesCard">
@@ -85,10 +102,10 @@
       <p class="hint" style="margin:0 0 14px">
         You are told when a Friday closes unsubmitted, and when she confirms.
       </p>
-      <div class="row"><span class="row-k">This device</span><span class="row-v" id="notifState">—</span></div>
+      <div class="row"><span class="row-k">This phone</span><span class="row-v" id="notifState">—</span></div>
       <div class="actions" style="margin:15px 0 0">
-        <button id="enableBtn" class="btn btn-ghost">Enable on this device</button>
-        <button id="testBtn" class="btn btn-quiet">Send a test notification</button>
+        <button id="enableBtn" class="btn" type="button">Turn on for this phone</button>
+        <button id="testBtn" class="btn btn-quiet" type="button">Send a test notification</button>
       </div>
     </div>
   </details>
@@ -96,6 +113,7 @@
   <div class="foot"><a href="#" id="logout">Sign out</a></div>
 </div>
 
+<script src="/ui.js"></script>
 <script src="/partner.js"></script>
 </body>
 </html>
